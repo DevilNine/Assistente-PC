@@ -38,11 +38,15 @@ function Pause-Output {
     Read-Host "Press ENTER to continue..."
 }
 
-# 3. CHECK INSTALLED SOFTWARE
+# 3. CHECK INSTALLED SOFTWARE (ROBUST VERSION)
 $script:InstalledCache = $null
+$script:CacheTime = $null
 
 function Get-InstalledSoftware {
-    if ($script:InstalledCache) { return $script:InstalledCache }
+    $now = Get-Date
+    if ($script:InstalledCache -and $script:CacheTime -and (($now - $script:CacheTime).TotalSeconds -lt 300)) {
+        return $script:InstalledCache
+    }
     $paths = @(
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
         'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
@@ -50,21 +54,41 @@ function Get-InstalledSoftware {
     )
     $script:InstalledCache = @()
     foreach($p in $paths) {
-        $script:InstalledCache += Get-ItemProperty -Path $p -EA SilentlyContinue | Where-Object { $_.DisplayName } | Select-Object DisplayName
+        $script:InstalledCache += Get-ItemProperty -Path $p -EA SilentlyContinue | Where-Object { $_.DisplayName } | Select-Object DisplayName, InstallLocation, Publisher
     }
+    $script:CacheTime = Get-Date
     return $script:InstalledCache
 }
 
 function Test-Installed {
     param($prog)
+    $script:InstalledCache = $null
     $installed = Get-InstalledSoftware
     foreach($m in $prog.Match) {
-        if (($installed.DisplayName) -like "*$m*") { return $true }
+        $matches = $installed | Where-Object { $_.DisplayName -like "*$m*" }
+        if ($matches) { return $true }
+    }
+    $programName = $prog.DisplayName.ToLower()
+    $commonPaths = @(
+        "C:\Program Files\$($prog.DisplayName)",
+        "C:\Program Files (x86)\$($prog.DisplayName)",
+        "$env:LOCALAPPDATA\Programs\$($prog.DisplayName)",
+        "$env:APPDATA\$($prog.DisplayName)"
+    )
+    foreach ($path in $commonPaths) {
+        if (Test-Path $path) { return $true }
     }
     return $false
 }
 
-# 4. BASE INSTALLER (Optimized with BitsTransfer)
+function Confirm-Installation {
+    param($prog)
+    Start-Sleep -Seconds 2
+    $script:InstalledCache = $null
+    return Test-Installed -prog $prog
+}
+
+# 4. BASE INSTALLER (ROBUST VERSION)
 function Install-Target {
     param($prog)
     if (Test-Installed -prog $prog) {
@@ -75,15 +99,19 @@ function Install-Target {
     $success = $false
     $progName = $prog.DisplayName -replace '[^\w]', '_'
     $tempInstaller = "$env:TEMP\${progName}_setup.exe"
+    $installMethod = ""
     
-    # Try Chocolatey first (more reliable)
+    # Try Chocolatey first (most reliable)
     if ($prog.ChocoId -and (Get-Command choco -EA SilentlyContinue)) {
         Write-Log "Trying Chocolatey: $($prog.DisplayName)"
-        choco install $prog.ChocoId -y --force --ignore-checksums 2>$null
-        if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 3010) { 
-            $success = $true 
-            Write-Suc "Installed via Chocolatey!"
-            return
+        $chocoResult = & choco install $prog.ChocoId -y --force --ignore-checksums 2>&1
+        if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 3010 -or $chocoResult -match "installed|success") { 
+            if (Confirm-Installation -prog $prog) {
+                $success = $true
+                $installMethod = "Chocolatey"
+                Write-Suc "Installed via Chocolatey!"
+                return
+            }
         }
     }
     
@@ -91,53 +119,105 @@ function Install-Target {
     if (-not $success -and $prog.WingetId -and (Get-Command winget -EA SilentlyContinue)) {
         Write-Log "Trying Winget: $($prog.DisplayName)"
         $wingetArgs = "--id $($prog.WingetId) -e --accept-source-agreements --accept-package-agreements --silent --accept-source-manifests"
-        Start-Process -FilePath "winget" -ArgumentList "install $wingetArgs" -WindowStyle Hidden -Wait -EA SilentlyContinue
-        if ($LASTEXITCODE -eq 0) { 
-            $success = $true 
-            Write-Suc "Installed via Winget!"
+        $wingetResult = & winget install $wingetArgs 2>&1
+        if ($LASTEXITCODE -eq 0 -or $wingetResult -match "Successfully installed|installed") {
+            if (Confirm-Installation -prog $prog) {
+                $success = $true
+                $installMethod = "Winget"
+                Write-Suc "Installed via Winget!"
+                return
+            }
+        }
+    }
+
+    # Direct download as last resort
+    if (-not $success -and $prog.DirectUrl) {
+        Write-Log "Trying direct download: $($prog.DisplayName)"
+        $downloadSuccess = $false
+        
+        # Try BitsTransfer first
+        try {
+            Start-BitsTransfer -Source $prog.DirectUrl -Destination $tempInstaller -Priority High -TransferType Download -ErrorAction Stop
+            if ((Test-Path $tempInstaller) -and (Get-Item $tempInstaller).Length -gt 0) {
+                $downloadSuccess = $true
+            }
+        } catch {
+            Write-Log "BitsTransfer failed, trying alternative..."
+        }
+        
+        # Fallback to Invoke-WebRequest
+        if (-not $downloadSuccess) {
+            try {
+                $webClient = New-Object System.Net.WebClient
+                $webClient.DownloadFile($prog.DirectUrl, $tempInstaller)
+                if ((Test-Path $tempInstaller) -and (Get-Item $tempInstaller).Length -gt 0) {
+                    $downloadSuccess = $true
+                }
+            } catch {
+                Write-Log "WebClient failed"
+            }
+        }
+        
+        # Fallback to Invoke-WebRequest with headers
+        if (-not $downloadSuccess) {
+            try {
+                $headers = @{
+                    'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+                Invoke-WebRequest -Uri $prog.DirectUrl -OutFile $tempInstaller -Headers $headers -UseBasicParsing -TimeoutSec 60 -EA SilentlyContinue
+                if ((Test-Path $tempInstaller) -and (Get-Item $tempInstaller).Length -gt 0) {
+                    $downloadSuccess = $true
+                }
+            } catch {
+                Write-Log "Invoke-WebRequest failed"
+            }
+        }
+        
+        if ($downloadSuccess) {
+            $fileExt = [System.IO.Path]::GetExtension($prog.DirectUrl).ToLower()
+            Write-Log "Installing from $fileExt file..."
+            
+            try {
+                if ($fileExt -eq '.msi') {
+                    Start-Process msiexec.exe -ArgumentList "/i `"$tempInstaller`" /qn /norestart" -Wait -NoNewWindow
+                } elseif ($fileExt -eq '.zip') {
+                    $extractPath = "$env:TEMP\${progName}_unzip"
+                    Expand-Archive -Path $tempInstaller -DestinationPath $extractPath -Force
+                    $exeFiles = Get-ChildItem $extractPath -Filter "*.exe" -Recurse -EA SilentlyContinue | Select-Object -First 1
+                    if ($exeFiles) {
+                        Start-Process $exeFiles.FullName -ArgumentList "/S" -Wait -NoNewWindow
+                    }
+                } else {
+                    $argList = @("/S", "/NCRC", "/silent", "/norestart", "/quiet", "/Q")
+                    $proc = Start-Process -FilePath $tempInstaller -ArgumentList $argList -Wait -PassThru -NoNewWindow
+                }
+                
+                # Wait for installation to complete
+                Start-Sleep -Seconds 5
+                
+                if (Confirm-Installation -prog $prog) {
+                    $success = $true
+                    Write-Suc "Installed via Direct Download!"
+                }
+            } catch {
+                Write-Err "Installation process failed: $_"
+            }
+            
+            # Cleanup
+            Remove-Item $tempInstaller -Force -EA SilentlyContinue
             return
         }
     }
 
-    # Direct download via BitsTransfer as last resort
-    if (-not $success -and $prog.DirectUrl) {
-        Write-Log "Trying direct download: $($prog.DisplayName)"
-        try {
-            Start-BitsTransfer -Source $prog.DirectUrl -Destination $tempInstaller -Priority High -TransferType Download -ErrorAction Stop
-            if (Test-Path $tempInstaller) {
-                $fileExt = [System.IO.Path]::GetExtension($prog.DirectUrl).ToLower()
-                if ($fileExt -eq '.msi') {
-                    Start-Process msiexec.exe -ArgumentList "/i `"$tempInstaller`" /qn /norestart" -Wait -EA SilentlyContinue
-                } elseif ($fileExt -eq '.zip') {
-                    Expand-Archive -Path $tempInstaller -DestinationPath "$env:TEMP\${progName}_unzip" -Force
-                    $exeFiles = Get-ChildItem "$env:TEMP\${progName}_unzip" -Filter "*.exe" -Recurse -EA SilentlyContinue
-                    if ($exeFiles) { Start-Process $exeFiles[0].FullName -ArgumentList "/S" -Wait -EA SilentlyContinue }
-                } else {
-                    Start-Process -FilePath $tempInstaller -ArgumentList "/S /NCRC /silent /norestart" -Wait -EA SilentlyContinue
-                }
-                $success = $true
-                Write-Suc "Installed via Direct Download!"
-                Remove-Item $tempInstaller -Force -EA SilentlyContinue
-                return
-            }
-        } catch {
-            Write-Log "BitsTransfer failed, trying Invoke-WebRequest..."
-            try {
-                Invoke-WebRequest -Uri $prog.DirectUrl -OutFile $tempInstaller -UseBasicParsing -EA SilentlyContinue
-                if (Test-Path $tempInstaller) {
-                    $fileExt = [System.IO.Path]::GetExtension($prog.DirectUrl).ToLower()
-                    if ($fileExt -eq '.msi') {
-                        Start-Process msiexec.exe -ArgumentList "/i `"$tempInstaller`" /qn /norestart" -Wait -EA SilentlyContinue
-                    } else {
-                        Start-Process -FilePath $tempInstaller -ArgumentList "/S /NCRC /silent /norestart" -Wait -EA SilentlyContinue
-                    }
-                    $success = $true
-                    Write-Suc "Installed via Direct Download!"
-                    Remove-Item $tempInstaller -Force -EA SilentlyContinue
-                    return
-                }
-            } catch {
-                Write-Err "Direct download failed: $($prog.DisplayName)"
+    # Final verification
+    if (Test-Installed -prog $prog) {
+        $success = $true
+        Write-Suc "Installed successfully (verified)!"
+        return
+    }
+
+    if (-not $success) {
+        Write-Err "Failed to install $($prog.DisplayName) after all methods"
             }
         }
     }
@@ -181,12 +261,12 @@ $ProgramCatalog = @(
 
 # 6. GAME DEPENDENCIES
 $DepsCatalog = @(
-    [pscustomobject]@{ DisplayName='VCRedist AIO'; WingetId=''; ChocoId='vcredist-all'; DirectUrl=''; Match=@('Visual C++','vcredist') }
-    [pscustomobject]@{ DisplayName='DirectX End-User'; WingetId='Microsoft.DirectX'; ChocoId='directx'; DirectUrl=''; Match=@('DirectX') }
-    [pscustomobject]@{ DisplayName='.NET Desktop Runtime 8'; WingetId='Microsoft.DotNet.DesktopRuntime.8'; ChocoId='dotnet-desktopruntime'; DirectUrl=''; Match=@('.NET') }
-    [pscustomobject]@{ DisplayName='XNA Framework 4.0'; WingetId='Microsoft.XNARedist'; ChocoId='microsoft-xna-framework-4.0'; DirectUrl='https://download.microsoft.com/download/E/4/1/E415D7EF-5943-4C69-A3D8-2B1DC1D7A5A2/xnafx40_redist.exe'; Match=@('XNA') }
+    [pscustomobject]@{ DisplayName='VCRedist AIO'; WingetId=''; ChocoId='vcredist-all'; DirectUrl='https://github.com/abbodi1406/vcredist/raw/master/VisualCppRedist_AIO_x86_x64_71.exe'; Match=@('Visual C++','vcredist') }
+    [pscustomobject]@{ DisplayName='DirectX End-User'; WingetId='Microsoft.DirectX'; ChocoId='directx'; DirectUrl='https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe'; Match=@('DirectX') }
+    [pscustomobject]@{ DisplayName='.NET Desktop Runtime 8'; WingetId='Microsoft.DotNet.DesktopRuntime.8'; ChocoId='dotnet-desktopruntime'; DirectUrl='https://download.visualstudio.microsoft.com/download/pr/70e302c8-3019-40b0-8b16-7d4e5c3b0c6c/e4c12f84e68b4c4a9f5c8e0c5e7b8c3/dotnet-desktop-runtime-8.0.11-win-x64.exe'; Match=@('.NET') }
+    [pscustomobject]@{ DisplayName='XNA Framework 4.0'; WingetId='Microsoft.XNARedist'; ChocoId='xna4'; DirectUrl='https://download.microsoft.com/download/5/6/3/5638ba26-1741-491b-8c6e-2fd5c0e2251a/xnafx40_redist.msi'; Match=@('XNA') }
     [pscustomobject]@{ DisplayName='OpenAL'; WingetId=''; ChocoId='openal'; DirectUrl='https://www.openal.org/downloads/oalinst.zip'; Match=@('OpenAL') }
-    [pscustomobject]@{ DisplayName='PhysX'; WingetId='NVIDIA.NVIDIAPhysX'; ChocoId='physx'; DirectUrl='https://us.download.nvidia.com/GFE/GFEClient/PhysX-9.23.01-354.19-Std-Setup.exe'; Match=@('PhysX') }
+    [pscustomobject]@{ DisplayName='PhysX'; WingetId='NVIDIA.NVIDIAPhysX'; ChocoId='nvidia-physx'; DirectUrl='https://us.download.nvidia.com/GFE/GFEClient/3D/PhysX-9.21.0718-Std-Setup.exe'; Match=@('PhysX') }
 )
 
 # 7. PARSER MULTI-SELEÇÃO
