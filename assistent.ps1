@@ -73,6 +73,8 @@ function Install-Target {
     }
 
     $success = $false
+    $progName = $prog.DisplayName -replace '[^\w]', '_'
+    $tempInstaller = "$env:TEMP\${progName}_setup.exe"
     
     # Try Chocolatey first (more reliable)
     if ($prog.ChocoId -and (Get-Command choco -EA SilentlyContinue)) {
@@ -100,15 +102,43 @@ function Install-Target {
     # Direct download via BitsTransfer as last resort
     if (-not $success -and $prog.DirectUrl) {
         Write-Log "Trying direct download: $($prog.DisplayName)"
-        $tempInstaller = "$env:TEMP\$($prog.DisplayName)_setup.exe"
         try {
-            Start-BitsTransfer -Source $prog.DirectUrl -Destination $tempInstaller -Priority High -TransferType Download
-            Start-Process -FilePath $tempInstaller -ArgumentList "/S /NCRC" -Wait -EA SilentlyContinue
-            $success = $true
-            Write-Suc "Installed via Direct Download!"
-            Remove-Item $tempInstaller -Force -EA SilentlyContinue
+            Start-BitsTransfer -Source $prog.DirectUrl -Destination $tempInstaller -Priority High -TransferType Download -ErrorAction Stop
+            if (Test-Path $tempInstaller) {
+                $fileExt = [System.IO.Path]::GetExtension($prog.DirectUrl).ToLower()
+                if ($fileExt -eq '.msi') {
+                    Start-Process msiexec.exe -ArgumentList "/i `"$tempInstaller`" /qn /norestart" -Wait -EA SilentlyContinue
+                } elseif ($fileExt -eq '.zip') {
+                    Expand-Archive -Path $tempInstaller -DestinationPath "$env:TEMP\${progName}_unzip" -Force
+                    $exeFiles = Get-ChildItem "$env:TEMP\${progName}_unzip" -Filter "*.exe" -Recurse -EA SilentlyContinue
+                    if ($exeFiles) { Start-Process $exeFiles[0].FullName -ArgumentList "/S" -Wait -EA SilentlyContinue }
+                } else {
+                    Start-Process -FilePath $tempInstaller -ArgumentList "/S /NCRC /silent /norestart" -Wait -EA SilentlyContinue
+                }
+                $success = $true
+                Write-Suc "Installed via Direct Download!"
+                Remove-Item $tempInstaller -Force -EA SilentlyContinue
+                return
+            }
         } catch {
-            Write-Err "Direct download failed: $($prog.DisplayName)"
+            Write-Log "BitsTransfer failed, trying Invoke-WebRequest..."
+            try {
+                Invoke-WebRequest -Uri $prog.DirectUrl -OutFile $tempInstaller -UseBasicParsing -EA SilentlyContinue
+                if (Test-Path $tempInstaller) {
+                    $fileExt = [System.IO.Path]::GetExtension($prog.DirectUrl).ToLower()
+                    if ($fileExt -eq '.msi') {
+                        Start-Process msiexec.exe -ArgumentList "/i `"$tempInstaller`" /qn /norestart" -Wait -EA SilentlyContinue
+                    } else {
+                        Start-Process -FilePath $tempInstaller -ArgumentList "/S /NCRC /silent /norestart" -Wait -EA SilentlyContinue
+                    }
+                    $success = $true
+                    Write-Suc "Installed via Direct Download!"
+                    Remove-Item $tempInstaller -Force -EA SilentlyContinue
+                    return
+                }
+            } catch {
+                Write-Err "Direct download failed: $($prog.DisplayName)"
+            }
         }
     }
 
@@ -154,9 +184,9 @@ $DepsCatalog = @(
     [pscustomobject]@{ DisplayName='VCRedist AIO'; WingetId=''; ChocoId='vcredist-all'; DirectUrl=''; Match=@('Visual C++','vcredist') }
     [pscustomobject]@{ DisplayName='DirectX End-User'; WingetId='Microsoft.DirectX'; ChocoId='directx'; DirectUrl=''; Match=@('DirectX') }
     [pscustomobject]@{ DisplayName='.NET Desktop Runtime 8'; WingetId='Microsoft.DotNet.DesktopRuntime.8'; ChocoId='dotnet-desktopruntime'; DirectUrl=''; Match=@('.NET') }
-    [pscustomobject]@{ DisplayName='XNA Framework 4.0'; WingetId=''; ChocoId='xna4'; DirectUrl='https://download.microsoft.com/download/5/6/3/5638ba26-1741-491b-8c6e-2fd5c0e2251a/xnafx40_redist.msi'; Match=@('XNA') }
+    [pscustomobject]@{ DisplayName='XNA Framework 4.0'; WingetId='Microsoft.XNARedist'; ChocoId='microsoft-xna-framework-4.0'; DirectUrl='https://download.microsoft.com/download/E/4/1/E415D7EF-5943-4C69-A3D8-2B1DC1D7A5A2/xnafx40_redist.exe'; Match=@('XNA') }
     [pscustomobject]@{ DisplayName='OpenAL'; WingetId=''; ChocoId='openal'; DirectUrl='https://www.openal.org/downloads/oalinst.zip'; Match=@('OpenAL') }
-    [pscustomobject]@{ DisplayName='PhysX'; WingetId='NVIDIA.NVIDIAPhysX'; ChocoId='nvidia-physx'; DirectUrl='https://download.nvidia.com/GFE/GFEClient/PhysX-9.23.01-354.19-Std-Setup.exe'; Match=@('PhysX') }
+    [pscustomobject]@{ DisplayName='PhysX'; WingetId='NVIDIA.NVIDIAPhysX'; ChocoId='physx'; DirectUrl='https://us.download.nvidia.com/GFE/GFEClient/PhysX-9.23.01-354.19-Std-Setup.exe'; Match=@('PhysX') }
 )
 
 # 7. PARSER MULTI-SELEÇÃO
