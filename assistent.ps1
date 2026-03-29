@@ -3,6 +3,7 @@
 # Version: 2.0 (Pure PowerShell CLI)
 #========================================================================
 $ErrorActionPreference = 'SilentlyContinue'
+$ProgressPreference = 'SilentlyContinue'
 
 # 1. ELEVAÇÃO DE ADMIN
 function Test-Admin {
