@@ -263,25 +263,41 @@ function Menu-Packs {
     $ch = Read-Host "`nSelecione"
     switch($ch) {
         '1' {
-            Write-Log "Instalando Spicetify via powershell..."
-            Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/spicetify/spicetify-cli/master/install.ps1" | Invoke-Expression
+            Write-Log "Instalando Spicetify..."
+            $tempScript = "$env:TEMP\spicetify_install.ps1"
+            Start-BitsTransfer -Source "https://raw.githubusercontent.com/spicetify/spicetify-cli/master/install.ps1" -Destination $tempScript
+            Invoke-Expression $tempScript
+            Remove-Item $tempScript -Force -EA SilentlyContinue
             Pause-Output
         }
         '2' {
             Write-Log "Baixando AME Wizard..."
-            # Placeholder for ReviOS downloader logic
-            Write-Suc "AME Wizard baixado simulado."
+            $ameUrl = "https://github.com/adrifcastr/AME-Wizard/releases/latest/download/AME.exe"
+            $amePath = "$env:TEMP\AME.exe"
+            try {
+                Start-BitsTransfer -Source $ameUrl -Destination $amePath
+                Start-Process -FilePath $amePath
+            } catch {
+                Write-Err "Falha ao baixar AME Wizard"
+            }
             Pause-Output
         }
         '3' {
-            Write-Log "Rodando WinAct..."
-            irm https://massgrave.dev/get | iex
+            Write-Log "Baixando e executando WinAct..."
+            $tempScript = "$env:TEMP\winact.ps1"
+            try {
+                Start-BitsTransfer -Source "https://massgrave.dev/get" -Destination $tempScript
+                Invoke-Expression (Get-Content $tempScript -Raw)
+                Remove-Item $tempScript -Force -EA SilentlyContinue
+            } catch {
+                Write-Err "Falha ao executar WinAct"
+            }
             Pause-Output
         }
         '4' {
             Write-Log "Baixando o instalador oficial do Spotify..."
             $spotifyExe = "$env:TEMP\SpotifySetup.exe"
-            Invoke-WebRequest -Uri "https://download.scdn.co/SpotifySetup.exe" -OutFile $spotifyExe -UseBasicParsing
+            Start-BitsTransfer -Source "https://download.scdn.co/SpotifySetup.exe" -Destination $spotifyExe
             Write-Log "Rodando o instalador..."
             Start-Process -FilePath $spotifyExe -Wait
             Write-Suc "Instalação do Spotify concluída."
