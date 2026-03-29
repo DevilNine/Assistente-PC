@@ -121,7 +121,7 @@ function Install-Target {
 $ProgramCatalog = @(
     [pscustomobject]@{ DisplayName='7-Zip'; WingetId='7zip.7zip'; ChocoId='7zip'; Match=@('7-Zip') }
     [pscustomobject]@{ DisplayName='Audacity'; WingetId='Audacity.Audacity'; ChocoId='audacity'; Match=@('Audacity') }
-    [pscustomobject]@{ DisplayName='BCUninstaller'; WingetId='Klocman.BulkCrapUninstaller'; ChocoId='bcuninstaller'; Match=@('Bulk Crap Uninstaller') }
+    [pscustomobject]@{ DisplayName='BCUninstaller'; WingetId='Klocman.BulkCrapUninstaller'; ChocoId='bulk-crap-uninstaller'; DirectUrl='https://github.com/Klocman/Bulk-Crap-Uninstaller/releases/download/v5.8/BulkCSSetup.exe'; Match=@('Bulk Crap Uninstaller') }
     [pscustomobject]@{ DisplayName='CPU-Z'; WingetId='CPUID.CPU-Z'; ChocoId='cpu-z'; Match=@('CPU-Z') }
     [pscustomobject]@{ DisplayName='CrystalDiskInfo'; WingetId='CrystalDewWorld.CrystalDiskInfo'; ChocoId='crystaldiskinfo'; Match=@('CrystalDiskInfo') }
     [pscustomobject]@{ DisplayName='CrystalDiskMark'; WingetId='CrystalDewWorld.CrystalDiskMark'; ChocoId='crystaldiskmark'; Match=@('CrystalDiskMark') }
@@ -130,15 +130,15 @@ $ProgramCatalog = @(
     [pscustomobject]@{ DisplayName='Epic Games'; WingetId='EpicGames.EpicGamesLauncher'; ChocoId='epicgameslauncher'; DirectUrl='https://launcher-public-service-prod06.ol.epicgames.com/launcher/api/installer/Installers.win32.epicgames-launcher-installer.exe'; Match=@('Epic Games') }
     [pscustomobject]@{ DisplayName='GameSave Manager'; WingetId='InsaneMatters.GameSaveManager'; ChocoId='gamesavemanager'; DirectUrl='https://www.gamesavemanager.com/Download'; Match=@('GameSave Manager') }
     [pscustomobject]@{ DisplayName='Git'; WingetId='Git.Git'; ChocoId='git'; Match=@('Git') }
-    [pscustomobject]@{ DisplayName='Hydra Launcher'; WingetId='Polaar.Hydra'; ChocoId='hydra'; DirectUrl='https://github.com/HydraLauncher/Hydra/releases/latest/download/Hydra-Setup.exe'; Match=@('Hydra') }
+    [pscustomobject]@{ DisplayName='Hydra Launcher'; WingetId='Polaar.Hydra'; ChocoId=''; DirectUrl='https://github.com/HydraLauncher/Hydra/releases/download/2.0.6/Hydra-Setup.exe'; Match=@('Hydra') }
     [pscustomobject]@{ DisplayName='ImageGlass'; WingetId='ImageGlass.ImageGlass'; ChocoId='imageglass'; Match=@('ImageGlass') }
-    [pscustomobject]@{ DisplayName='League of Legends'; WingetId='RiotGames.LeagueOfLegends.EUW'; ChocoId=''; Match=@('League of Legends') }
+    [pscustomobject]@{ DisplayName='League of Legends'; WingetId='RiotGames.LeagueOfLegends'; ChocoId='leagueoflegends'; DirectUrl='https://signup.leagueoflegends.com/platform-shared/v1/install/na/prod/InstallLeague.exe'; Match=@('League of Legends') }
     [pscustomobject]@{ DisplayName='Firefox'; WingetId='Mozilla.Firefox'; ChocoId='firefox'; Match=@('Firefox') }
     [pscustomobject]@{ DisplayName='MPV Player'; WingetId='mpv.mpv'; ChocoId='mpv'; Match=@('mpv') }
     [pscustomobject]@{ DisplayName='Notepad++'; WingetId='Notepad++.Notepad++'; ChocoId='notepadplusplus'; Match=@('Notepad++') }
     [pscustomobject]@{ DisplayName='OBS Studio'; WingetId='OBSProject.OBSStudio'; ChocoId='obs-studio'; Match=@('OBS Studio') }
     [pscustomobject]@{ DisplayName='Obsidian'; WingetId='Obsidian.Obsidian'; ChocoId='obsidian'; Match=@('Obsidian') }
-    [pscustomobject]@{ DisplayName='OP.GG'; WingetId='OPGG.OPGG'; ChocoId='opgg'; Match=@('OP.GG') }
+    [pscustomobject]@{ DisplayName='OP.GG'; WingetId='OPGG.OPGG'; ChocoId=''; DirectUrl='https://op.gg-desktop.gg/tests/OP.GG-Setup.exe'; Match=@('OP.GG') }
     [pscustomobject]@{ DisplayName='Prism Launcher'; WingetId='PrismLauncher.PrismLauncher'; ChocoId='prismlauncher'; Match=@('Prism') }
     [pscustomobject]@{ DisplayName='qBittorrent'; WingetId='qBittorrent.qBittorrent'; ChocoId='qbittorrent'; Match=@('qBittorrent') }
     [pscustomobject]@{ DisplayName='Roblox'; WingetId='Roblox.Roblox'; ChocoId='roblox'; Match=@('Roblox') }
@@ -149,14 +149,14 @@ $ProgramCatalog = @(
     [pscustomobject]@{ DisplayName='Telegram'; WingetId='Telegram.TelegramDesktop'; ChocoId='telegram'; Match=@('Telegram') }
 )
 
-# 6. DEPENDÊNCIAS DE JOGOS
+# 6. GAME DEPENDENCIES
 $DepsCatalog = @(
-    [pscustomobject]@{ DisplayName='VCRedist AIO'; WingetId=''; ChocoId='vcredist-all'; Match=@('Visual C++','vcredist') }
-    [pscustomobject]@{ DisplayName='DirectX End-User'; WingetId='Microsoft.DirectX'; ChocoId='directx'; Match=@('DirectX') }
-    [pscustomobject]@{ DisplayName='.NET Desktop Runtime 8'; WingetId='Microsoft.DotNet.DesktopRuntime.8'; ChocoId='dotnet-desktopruntime'; Match=@('.NET') }
-    [pscustomobject]@{ DisplayName='XNA Framework 4.0'; WingetId=''; ChocoId='xna4'; Match=@('XNA') }
-    [pscustomobject]@{ DisplayName='OpenAL'; WingetId=''; ChocoId='openal'; Match=@('OpenAL') }
-    [pscustomobject]@{ DisplayName='PhysX'; WingetId=''; ChocoId='physx'; Match=@('PhysX') }
+    [pscustomobject]@{ DisplayName='VCRedist AIO'; WingetId=''; ChocoId='vcredist-all'; DirectUrl=''; Match=@('Visual C++','vcredist') }
+    [pscustomobject]@{ DisplayName='DirectX End-User'; WingetId='Microsoft.DirectX'; ChocoId='directx'; DirectUrl=''; Match=@('DirectX') }
+    [pscustomobject]@{ DisplayName='.NET Desktop Runtime 8'; WingetId='Microsoft.DotNet.DesktopRuntime.8'; ChocoId='dotnet-desktopruntime'; DirectUrl=''; Match=@('.NET') }
+    [pscustomobject]@{ DisplayName='XNA Framework 4.0'; WingetId=''; ChocoId='xna4'; DirectUrl='https://download.microsoft.com/download/5/6/3/5638ba26-1741-491b-8c6e-2fd5c0e2251a/xnafx40_redist.msi'; Match=@('XNA') }
+    [pscustomobject]@{ DisplayName='OpenAL'; WingetId=''; ChocoId='openal'; DirectUrl='https://www.openal.org/downloads/oalinst.zip'; Match=@('OpenAL') }
+    [pscustomobject]@{ DisplayName='PhysX'; WingetId='NVIDIA.NVIDIAPhysX'; ChocoId='nvidia-physx'; DirectUrl='https://download.nvidia.com/GFE/GFEClient/PhysX-9.23.01-354.19-Std-Setup.exe'; Match=@('PhysX') }
 )
 
 # 7. PARSER MULTI-SELEÇÃO
