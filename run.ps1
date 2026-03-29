@@ -27,7 +27,7 @@ if (-not (Test-Path $tempDir)) {
 }
 
 # 3. URLs do Repositorio (SUBSTITUA "SEU-USUARIO/Assistente-PC" PELO SEU REPOSITORIO)
-$repoBaseUrl = "https://raw.githubusercontent.com/SEU-USUARIO/Assistente-PC/main"
+$repoBaseUrl = "https://raw.githubusercontent.com/DevilNine/Assistente-PC/refs/heads/main/run.ps1"
 
 # 4. Download Otimizado e Direto
 Write-Host "Baixando nucleo do assistente..."
