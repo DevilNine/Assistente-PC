@@ -217,17 +217,11 @@ function Install-Target {
     }
 
     if (-not $success) {
-        Write-Err "Failed to install $($prog.DisplayName) after all methods"
-            }
-        }
-    }
-
-    if (-not $success) {
         Write-Err "Failed to install $($prog.DisplayName)"
     }
 }
 
-# 5. CATÁLOGO DE APLICATIVOS (OS 28 PROGRAMAS)
+# 5. SOFTWARE CATALOG (28 PROGRAMS)
 $ProgramCatalog = @(
     [pscustomobject]@{ DisplayName='7-Zip'; WingetId='7zip.7zip'; ChocoId='7zip'; Match=@('7-Zip') }
     [pscustomobject]@{ DisplayName='Audacity'; WingetId='Audacity.Audacity'; ChocoId='audacity'; Match=@('Audacity') }
