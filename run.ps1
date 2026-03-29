@@ -13,7 +13,7 @@ $ErrorActionPreference = 'Stop'
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "Elevando privilegios para Administrador..." -ForegroundColor Yellow
-    $args = "-NoProfile -ExecutionPolicy Bypass -Command `"& {irm 'https://raw.githubusercontent.com/SEU-USUARIO/Assistente-PC/main/run.ps1' | iex}`""
+    $args = "-NoProfile -ExecutionPolicy Bypass -Command `"& {irm 'https://raw.githubusercontent.com/DevilNine/Assistente-PC/refs/heads/main/run.ps1' | iex}`""
     Start-Process powershell -ArgumentList $args -Verb RunAs -Wait
     exit
 }
