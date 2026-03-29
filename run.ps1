@@ -13,8 +13,8 @@ $ErrorActionPreference = 'Stop'
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "Elevando privilegios para Administrador..." -ForegroundColor Yellow
-    $args = "-NoProfile -ExecutionPolicy Bypass -Command `"& {irm 'https://raw.githubusercontent.com/DevilNine/Assistente-PC/refs/heads/main/run.ps1' | iex}`""
-    Start-Process powershell -ArgumentList $args -Verb RunAs -Wait
+    $cmdArgs = "-NoProfile -ExecutionPolicy Bypass -Command `"& {irm 'https://raw.githubusercontent.com/DevilNine/Assistente-PC/main/run.ps1' | iex}`""
+    Start-Process powershell -ArgumentList $cmdArgs -Verb RunAs -Wait
     exit
 }
 
@@ -26,8 +26,8 @@ if (-not (Test-Path $tempDir)) {
     New-Item -ItemType Directory -Path $tempDir | Out-Null
 }
 
-# 3. URLs do Repositorio (SUBSTITUA "SEU-USUARIO/Assistente-PC" PELO SEU REPOSITORIO)
-$repoBaseUrl = "https://raw.githubusercontent.com/DevilNine/Assistente-PC/refs/heads/main/run.ps1"
+# 3. URLs do Repositorio
+$repoBaseUrl = "https://raw.githubusercontent.com/DevilNine/Assistente-PC/main"
 
 # 4. Download Otimizado e Direto
 Write-Host "Baixando nucleo do assistente..."
