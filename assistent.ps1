@@ -18,57 +18,16 @@ if (-not (Test-Admin)) {
     exit
 }
 
-# Habilitar ExecutionPolicy Unrestricted para todos os escopos
+# Enable ExecutionPolicy Unrestricted for all scopes
 Set-ExecutionPolicy Unrestricted -Scope Process -Force -ErrorAction SilentlyContinue
 Set-ExecutionPolicy Unrestricted -Scope CurrentUser -Force -ErrorAction SilentlyContinue
 Set-ExecutionPolicy Unrestricted -Scope LocalMachine -Force -ErrorAction SilentlyContinue
 
-# Desabilitar UAC temporariamente para instalações silenciosas
+# Disable UAC temporarily for silent installations
 Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" -Value 0 -Force -EA SilentlyContinue
 
-# Instalação single via job (parallel install)
-if ($args[0] -eq "-InstallSingle") {
-    $progName = $args[1]
-    $wingetId = $args[2]
-    $chocoId = $args[3]
-    $directUrl = $args[4]
-    
-    $prog = [PSCustomObject]@{
-        DisplayName = $progName
-        WingetId = $wingetId
-        ChocoId = $chocoId
-        DirectUrl = $directUrl
-    }
-    
-    # Same as Install-Target but simplified
-    if ($chocoId -and (Get-Command choco -EA SilentlyContinue)) {
-        choco install $chocoId -y --force --ignore-checksums 2>$null
-        if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 3010) { 
-            Write-Output "OK: $progName via Chocolatey"
-            exit 
-        }
-    }
-    if ($wingetId -and (Get-Command winget -EA SilentlyContinue)) {
-        Start-Process "winget" -ArgumentList "install --id $wingetId -e --accept-source-agreements --accept-package-agreements --silent --accept-source-manifests" -WindowStyle Hidden -Wait
-        if ($LASTEXITCODE -eq 0) { 
-            Write-Output "OK: $progName via Winget"
-            exit 
-        }
-    }
-    if ($directUrl) {
-        $tempFile = "$env:TEMP\$progName.exe"
-        Start-BitsTransfer -Source $directUrl -Destination $tempFile -Priority High
-        Start-Process $tempFile -ArgumentList "/S /NCRC" -Wait
-        Write-Output "OK: $progName via Download"
-        Remove-Item $tempFile -Force -EA SilentlyContinue
-        exit
-    }
-    Write-Output "ERRO: $progName"
-    exit
-}
 
-
-# 2. LOGGING E INTERFACE
+# 2. LOGGING AND INTERFACE
 function Write-Log { param([string]$m) Write-Host " [i] $m" -ForegroundColor Cyan }
 function Write-Suc { param([string]$m) Write-Host " [+] $m" -ForegroundColor Green }
 function Write-Err { param([string]$m) Write-Host " [x] $m" -ForegroundColor Red }
@@ -76,10 +35,10 @@ function Write-Warn { param([string]$m) Write-Host " [!] $m" -ForegroundColor Ye
 
 function Pause-Output {
     Write-Host ""
-    Read-Host "Pressione ENTER para continuar..."
+    Read-Host "Press ENTER to continue..."
 }
 
-# 3. VERIFICAÇÃO DE INSTALADOS
+# 3. CHECK INSTALLED SOFTWARE
 $script:InstalledCache = $null
 
 function Get-InstalledSoftware {
@@ -105,56 +64,56 @@ function Test-Installed {
     return $false
 }
 
-# 4. INSTALADOR BASE (otimizado com BitsTransfer e instalação paralela)
+# 4. BASE INSTALLER (Optimized with BitsTransfer)
 function Install-Target {
     param($prog)
     if (Test-Installed -prog $prog) {
-        Write-Suc "$($prog.DisplayName) ja esta instalado!"
+        Write-Suc "$($prog.DisplayName) is already installed!"
         return
     }
 
     $success = $false
     
-    # Tenta Chocolatey PRIMERO (mais confiável)
+    # Try Chocolatey first (more reliable)
     if ($prog.ChocoId -and (Get-Command choco -EA SilentlyContinue)) {
-        Write-Log "Tentando via Chocolatey: $($prog.DisplayName)"
+        Write-Log "Trying Chocolatey: $($prog.DisplayName)"
         choco install $prog.ChocoId -y --force --ignore-checksums 2>$null
         if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 3010) { 
             $success = $true 
-            Write-Suc "Instalado via Chocolatey!"
+            Write-Suc "Installed via Chocolatey!"
             return
         }
     }
     
-    # Tenta Winget com instalação oculta
+    # Try Winget with silent install
     if (-not $success -and $prog.WingetId -and (Get-Command winget -EA SilentlyContinue)) {
-        Write-Log "Tentando via Winget: $($prog.DisplayName)"
+        Write-Log "Trying Winget: $($prog.DisplayName)"
         $wingetArgs = "--id $($prog.WingetId) -e --accept-source-agreements --accept-package-agreements --silent --accept-source-manifests"
         Start-Process -FilePath "winget" -ArgumentList "install $wingetArgs" -WindowStyle Hidden -Wait -EA SilentlyContinue
         if ($LASTEXITCODE -eq 0) { 
             $success = $true 
-            Write-Suc "Instalado via Winget!"
+            Write-Suc "Installed via Winget!"
             return
         }
     }
 
-    # Download direto via BitsTransfer como último recurso
+    # Direct download via BitsTransfer as last resort
     if (-not $success -and $prog.DirectUrl) {
-        Write-Log "Tentando download direto: $($prog.DisplayName)"
+        Write-Log "Trying direct download: $($prog.DisplayName)"
         $tempInstaller = "$env:TEMP\$($prog.DisplayName)_setup.exe"
         try {
             Start-BitsTransfer -Source $prog.DirectUrl -Destination $tempInstaller -Priority High -TransferType Download
             Start-Process -FilePath $tempInstaller -ArgumentList "/S /NCRC" -Wait -EA SilentlyContinue
             $success = $true
-            Write-Suc "Instalado via Download Direto!"
+            Write-Suc "Installed via Direct Download!"
             Remove-Item $tempInstaller -Force -EA SilentlyContinue
         } catch {
-            Write-Err "Download direto falhou: $($prog.DisplayName)"
+            Write-Err "Direct download failed: $($prog.DisplayName)"
         }
     }
 
     if (-not $success) {
-        Write-Err "Nao foi possivel instalar $($prog.DisplayName)"
+        Write-Err "Failed to install $($prog.DisplayName)"
     }
 }
 
@@ -224,8 +183,8 @@ function Parse-Selection {
 
 function Menu-Installs {
     Clear-Host
-    Write-Host "=== INSTALADOR DE SOFTWARES ===" -ForegroundColor Cyan
-    Write-Host "Lista baseada no WinUtil / Winget / Choco`n"
+    Write-Host "=== SOFTWARE INSTALLER ===" -ForegroundColor Cyan
+    Write-Host "Based on WinUtil / Winget / Choco`n"
     
     $i = 1
     foreach ($p in $ProgramCatalog) {
@@ -235,43 +194,29 @@ function Menu-Installs {
         $i++
     }
     
-    Write-Host "`nDigite os números (ex: 1,4,15-20) ou ENTER p/ voltar:" -ForegroundColor Yellow
+    Write-Host "`n [A] Install ALL" -ForegroundColor Green
+    Write-Host "Enter numbers (ex: 1,4,15-20) or ENTER to go back:" -ForegroundColor Yellow
     $inp = Read-Host ">"
+    
+    if ($inp -eq "A" -or $inp -eq "a") {
+        Write-Host "`nInstalling ALL software..." -ForegroundColor Cyan
+        foreach ($p in $ProgramCatalog) { Install-Target -prog $p }
+        Pause-Output
+        return
+    }
+    
     $sel = Parse-Selection -inStr $inp -max $ProgramCatalog.Count
     
     if ($sel.Count -gt 0) {
-        Write-Host "`nIniciando instalacao PARALELA de $($sel.Count) itens..." -ForegroundColor Cyan
-
-        # Instalar todos em paralelo usando Jobs
-        $jobs = @()
-        foreach ($s in $sel) {
-            $prog = $ProgramCatalog[$s-1]
-            $job = Start-Job -ScriptBlock {
-                param($p, $scriptPath)
-                & $scriptPath -InstallSingle $p.DisplayName $p.WingetId $p.ChocoId $p.DirectUrl
-            } -ArgumentList $prog, $PSCommandPath
-            $jobs += $job
-        }
-
-        # Aguardar todos os jobs terminarem
-        Write-Log "Aguardando instalacoes..."
-        $jobs | Wait-Job | Out-Null
-        
-        foreach ($job in $jobs) {
-            $result = Receive-Job -Job $job
-            if ($result -match "OK") { Write-Suc $result }
-            elseif ($result -match "ERRO") { Write-Err $result }
-        }
-        
-        Remove-Job -Job $jobs -Force -EA SilentlyContinue
-        Write-Suc "Todas as instalacoes concluidas!"
+        Write-Host "`nStarting installation of $($sel.Count) items..." -ForegroundColor Cyan
+        foreach ($s in $sel) { Install-Target -prog $ProgramCatalog[$s-1] }
         Pause-Output
     }
 }
 
 function Menu-Deps {
     Clear-Host
-    Write-Host "=== DEPENDENCIAS DE JOGOS ===" -ForegroundColor Cyan
+    Write-Host "=== GAME DEPENDENCIES ===" -ForegroundColor Cyan
     $i = 1
     foreach ($d in $DepsCatalog) {
         $st = if (Test-Installed -prog $d) { "[OK]" } else { "    " }
@@ -279,12 +224,21 @@ function Menu-Deps {
         Write-Host (" [{0}] {1}  {2}" -f $i, $st, $d.DisplayName) -ForegroundColor $color
         $i++
     }
-    Write-Host "`nDigite os números (ex: 1,2,4-6) ou ENTER p/ voltar:" -ForegroundColor Yellow
+    Write-Host "`n [A] Install ALL Dependencies" -ForegroundColor Green
+    Write-Host "Enter numbers (ex: 1,2,4-6) or ENTER to go back:" -ForegroundColor Yellow
     $inp = Read-Host ">"
+    
+    if ($inp -eq "A" -or $inp -eq "a") {
+        Write-Host "`nInstalling ALL dependencies..." -ForegroundColor Cyan
+        foreach ($d in $DepsCatalog) { Install-Target -prog $d }
+        Pause-Output
+        return
+    }
+    
     $sel = Parse-Selection -inStr $inp -max $DepsCatalog.Count
     
     if ($sel.Count -gt 0) {
-        Write-Host "`nIniciando instalacao..." -ForegroundColor Cyan
+        Write-Host "`nStarting installation..." -ForegroundColor Cyan
         foreach ($s in $sel) { Install-Target -prog $DepsCatalog[$s-1] }
         Pause-Output
     }
@@ -292,27 +246,27 @@ function Menu-Deps {
 
 function Menu-Tweaks {
     Clear-Host
-    Write-Host "=== LIMPEZA E SISTEMA ===" -ForegroundColor Cyan
-    Write-Host " [1] Limpar Arquivos Temporários (%TEMP% e C:\Windows\Temp)"
-    Write-Host " [2] Esvaziar Lixeira"
-    Write-Host " [3] Executar Limpeza de Disco (cleanmgr)"
+    Write-Host "=== CLEANUP & SYSTEM ===" -ForegroundColor Cyan
+    Write-Host " [1] Clean Temp Files (%TEMP% and C:\Windows\Temp)"
+    Write-Host " [2] Empty Recycle Bin"
+    Write-Host " [3] Run Disk Cleanup (cleanmgr)"
     Write-Host "`n [4] Flush DNS Cache"
-    Write-Host " [5] Reset Winsock e IP (Requer Reiniciar)"
-    Write-Host "`n [6] Voltar"
+    Write-Host " [5] Reset Winsock and IP (Requires Restart)"
+    Write-Host "`n [6] Back"
     
-    $ch = Read-Host "`nSelecione"
+    $ch = Read-Host "`nSelect"
     switch($ch){
         '1' { 
-            Write-Log "Limpando user temp..."
+            Write-Log "Cleaning user temp..."
             Get-ChildItem $env:TEMP -Recurse -Force -EA SilentlyContinue | Remove-Item -Recurse -Force -EA SilentlyContinue
-            Write-Log "Limpando windows temp..."
+            Write-Log "Cleaning windows temp..."
             Get-ChildItem "C:\Windows\Temp" -Recurse -Force -EA SilentlyContinue | Remove-Item -Recurse -Force -EA SilentlyContinue
-            Write-Suc "Pastas Temporárias Limpas."
+            Write-Suc "Temp folders cleaned."
             Pause-Output
         }
         '2' {
             Clear-RecycleBin -Force -EA SilentlyContinue
-            Write-Suc "Lixeira Esvaziada."
+            Write-Suc "Recycle Bin emptied."
             Pause-Output
         }
         '3' {
@@ -327,7 +281,7 @@ function Menu-Tweaks {
             netsh winsock reset | Out-Null
             netsh int ip reset | Out-Null
             netsh winhttp reset proxy | Out-Null
-            Write-Suc "Rede IP/Winsock resetada. Reinicie o computador."
+            Write-Suc "IP/Winsock reset. Restart your computer."
             Pause-Output
         }
     }
@@ -335,16 +289,16 @@ function Menu-Tweaks {
 
 function Menu-Packs {
     Clear-Host
-    Write-Host "=== PACÕES E SCRIPTS PREMIUM ===" -ForegroundColor Magenta
-    Write-Host " [1] Instalar Spicetify (Spotify Mod sem Ads)"
-    Write-Host " [2] Instalar AME Wizard (ReviOS)"
-    Write-Host " [3] Ativador WinAct"
-    Write-Host " [4] Instalar Spotify (Instalador Oficial - Não MS Store)"
-    Write-Host " [5] Voltar"
-    $ch = Read-Host "`nSelecione"
+    Write-Host "=== PREMIUM TOOLS & SCRIPTS ===" -ForegroundColor Magenta
+    Write-Host " [1] Install Spicetify (Spotify Ad-free Mod)"
+    Write-Host " [2] Install AME Wizard (ReviOS)"
+    Write-Host " [3] WinAct Activator"
+    Write-Host " [4] Install Spotify (Official Installer)"
+    Write-Host " [5] Back"
+    $ch = Read-Host "`nSelect"
     switch($ch) {
         '1' {
-            Write-Log "Instalando Spicetify..."
+            Write-Log "Installing Spicetify..."
             $tempScript = "$env:TEMP\spicetify_install.ps1"
             Start-BitsTransfer -Source "https://raw.githubusercontent.com/spicetify/spicetify-cli/master/install.ps1" -Destination $tempScript
             Invoke-Expression $tempScript
@@ -352,36 +306,36 @@ function Menu-Packs {
             Pause-Output
         }
         '2' {
-            Write-Log "Baixando AME Wizard..."
+            Write-Log "Downloading AME Wizard..."
             $ameUrl = "https://github.com/adrifcastr/AME-Wizard/releases/latest/download/AME.exe"
             $amePath = "$env:TEMP\AME.exe"
             try {
                 Start-BitsTransfer -Source $ameUrl -Destination $amePath
                 Start-Process -FilePath $amePath
             } catch {
-                Write-Err "Falha ao baixar AME Wizard"
+                Write-Err "Failed to download AME Wizard"
             }
             Pause-Output
         }
         '3' {
-            Write-Log "Baixando e executando WinAct..."
+            Write-Log "Downloading and running WinAct..."
             $tempScript = "$env:TEMP\winact.ps1"
             try {
                 Start-BitsTransfer -Source "https://massgrave.dev/get" -Destination $tempScript
                 Invoke-Expression (Get-Content $tempScript -Raw)
                 Remove-Item $tempScript -Force -EA SilentlyContinue
             } catch {
-                Write-Err "Falha ao executar WinAct"
+                Write-Err "Failed to run WinAct"
             }
             Pause-Output
         }
         '4' {
-            Write-Log "Baixando o instalador oficial do Spotify..."
+            Write-Log "Downloading official Spotify installer..."
             $spotifyExe = "$env:TEMP\SpotifySetup.exe"
             Start-BitsTransfer -Source "https://download.scdn.co/SpotifySetup.exe" -Destination $spotifyExe
-            Write-Log "Rodando o instalador..."
+            Write-Log "Running installer..."
             Start-Process -FilePath $spotifyExe -Wait
-            Write-Suc "Instalação do Spotify concluída."
+            Write-Suc "Spotify installation completed."
             Pause-Output
         }
     }
@@ -389,24 +343,24 @@ function Menu-Packs {
 
 function Menu-Tools {
     Clear-Host
-    Write-Host "=== ATALHOS RÁPIDOS ===" -ForegroundColor Cyan
-    Write-Host " [1] Gerenciador de Dispositivos (devmgmt)"
-    Write-Host " [2] Serviços (services.msc)"
-    Write-Host " [3] Gerenciador de Tarefas"
-    Write-Host " [4] Editor de Registro (regedit)"
-    Write-Host " [5] Painel de Controle"
-    Write-Host " [6] Reiniciar Windows Explorer"
-    Write-Host " [7] Informações do Sistema"
-    Write-Host " [8] Voltar"
+    Write-Host "=== QUICK SHORTCUTS ===" -ForegroundColor Cyan
+    Write-Host " [1] Device Manager (devmgmt)"
+    Write-Host " [2] Services (services.msc)"
+    Write-Host " [3] Task Manager"
+    Write-Host " [4] Registry Editor (regedit)"
+    Write-Host " [5] Control Panel"
+    Write-Host " [6] Restart Windows Explorer"
+    Write-Host " [7] System Information"
+    Write-Host " [8] Back"
     
-    $ch = Read-Host "`nSelecione"
+    $ch = Read-Host "`nSelect"
     switch($ch) {
         '1' { Start-Process devmgmt.msc }
         '2' { Start-Process services.msc }
         '3' { Start-Process taskmgr }
         '4' { Start-Process regedit }
         '5' { Start-Process control }
-        '6' { Stop-Process -Name explorer -Force; Write-Suc "Explorer Reiniciado." ; Pause-Output }
+        '6' { Stop-Process -Name explorer -Force; Write-Suc "Explorer Restarted." ; Pause-Output }
         '7' {
             Clear-Host
             $sys = Get-CimInstance Win32_ComputerSystem
@@ -424,22 +378,22 @@ function Menu-Tools {
     }
 }
 
-# 9. LOOP PRINCIPAL
+# 9. MAIN LOOP
 while ($true) {
     Clear-Host
     Write-Host "=========================================" -ForegroundColor Cyan
     Write-Host "      DEVIL9 - PC ASSISTANT CLI          " -ForegroundColor White
     Write-Host "=========================================" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host " [1] Softwares (28 Apps)" -ForegroundColor White
-    Write-Host " [2] Dependencias (Jogos/Dev)" -ForegroundColor White
-    Write-Host " [3] Limpeza e Rede" -ForegroundColor White
-    Write-Host " [4] Modulos Premium / ReviOS" -ForegroundColor White
-    Write-Host " [5] Utilitarios do Windows" -ForegroundColor White
-    Write-Host " [6] Sair" -ForegroundColor Red
+    Write-Host " [1] Software (28 Apps)" -ForegroundColor White
+    Write-Host " [2] Dependencies (Games/Dev)" -ForegroundColor White
+    Write-Host " [3] Cleanup & Network" -ForegroundColor White
+    Write-Host " [4] Premium Modules / ReviOS" -ForegroundColor White
+    Write-Host " [5] Windows Utilities" -ForegroundColor White
+    Write-Host " [6] Exit" -ForegroundColor Red
     Write-Host ""
     
-    $ch = Read-Host "Selecione uma opcao"
+    $ch = Read-Host "Select an option"
     
     switch($ch) {
         '1' { Menu-Installs }
@@ -447,6 +401,6 @@ while ($true) {
         '3' { Menu-Tweaks }
         '4' { Menu-Packs }
         '5' { Menu-Tools }
-        '6' { Write-Host "Saindo..."; exit }
+        '6' { Write-Host "Exiting..."; exit }
     }
 }
