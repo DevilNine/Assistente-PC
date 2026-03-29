@@ -23,6 +23,50 @@ Set-ExecutionPolicy Unrestricted -Scope Process -Force -ErrorAction SilentlyCont
 Set-ExecutionPolicy Unrestricted -Scope CurrentUser -Force -ErrorAction SilentlyContinue
 Set-ExecutionPolicy Unrestricted -Scope LocalMachine -Force -ErrorAction SilentlyContinue
 
+# Desabilitar UAC temporariamente para instalações silenciosas
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" -Value 0 -Force -EA SilentlyContinue
+
+# Instalação single via job (parallel install)
+if ($args[0] -eq "-InstallSingle") {
+    $progName = $args[1]
+    $wingetId = $args[2]
+    $chocoId = $args[3]
+    $directUrl = $args[4]
+    
+    $prog = [PSCustomObject]@{
+        DisplayName = $progName
+        WingetId = $wingetId
+        ChocoId = $chocoId
+        DirectUrl = $directUrl
+    }
+    
+    # Same as Install-Target but simplified
+    if ($chocoId -and (Get-Command choco -EA SilentlyContinue)) {
+        choco install $chocoId -y --force --ignore-checksums 2>$null
+        if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 3010) { 
+            Write-Output "OK: $progName via Chocolatey"
+            exit 
+        }
+    }
+    if ($wingetId -and (Get-Command winget -EA SilentlyContinue)) {
+        Start-Process "winget" -ArgumentList "install --id $wingetId -e --accept-source-agreements --accept-package-agreements --silent --accept-source-manifests" -WindowStyle Hidden -Wait
+        if ($LASTEXITCODE -eq 0) { 
+            Write-Output "OK: $progName via Winget"
+            exit 
+        }
+    }
+    if ($directUrl) {
+        $tempFile = "$env:TEMP\$progName.exe"
+        Start-BitsTransfer -Source $directUrl -Destination $tempFile -Priority High
+        Start-Process $tempFile -ArgumentList "/S /NCRC" -Wait
+        Write-Output "OK: $progName via Download"
+        Remove-Item $tempFile -Force -EA SilentlyContinue
+        exit
+    }
+    Write-Output "ERRO: $progName"
+    exit
+}
+
 
 # 2. LOGGING E INTERFACE
 function Write-Log { param([string]$m) Write-Host " [i] $m" -ForegroundColor Cyan }
@@ -61,7 +105,7 @@ function Test-Installed {
     return $false
 }
 
-# 4. INSTALADOR BASE
+# 4. INSTALADOR BASE (otimizado com BitsTransfer e instalação paralela)
 function Install-Target {
     param($prog)
     if (Test-Installed -prog $prog) {
@@ -70,23 +114,47 @@ function Install-Target {
     }
 
     $success = $false
-    # Tenta Winget
-    if ($prog.WingetId -and (Get-Command winget -EA SilentlyContinue)) {
-        Write-Log "Tentando via Winget: $($prog.DisplayName)"
-        winget install --id $prog.WingetId -e --accept-source-agreements --accept-package-agreements --silent 2>$null
-        if ($LASTEXITCODE -eq 0) { $success = $true; Write-Suc "Instalado via Winget!" }
+    
+    # Tenta Chocolatey PRIMERO (mais confiável)
+    if ($prog.ChocoId -and (Get-Command choco -EA SilentlyContinue)) {
+        Write-Log "Tentando via Chocolatey: $($prog.DisplayName)"
+        choco install $prog.ChocoId -y --force --ignore-checksums 2>$null
+        if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 3010) { 
+            $success = $true 
+            Write-Suc "Instalado via Chocolatey!"
+            return
+        }
     }
     
-    # Tenta Choco se Winget falhar
-    if (-not $success -and $prog.ChocoId -and (Get-Command choco -EA SilentlyContinue)) {
-        Write-Log "Tentando via Chocolatey: $($prog.DisplayName)"
-        choco install $prog.ChocoId -y 2>$null
-        if ($LASTEXITCODE -eq 0) { $success = $true; Write-Suc "Instalado via Chocolatey!" }
+    # Tenta Winget com instalação oculta
+    if (-not $success -and $prog.WingetId -and (Get-Command winget -EA SilentlyContinue)) {
+        Write-Log "Tentando via Winget: $($prog.DisplayName)"
+        $wingetArgs = "--id $($prog.WingetId) -e --accept-source-agreements --accept-package-agreements --silent --accept-source-manifests"
+        Start-Process -FilePath "winget" -ArgumentList "install $wingetArgs" -WindowStyle Hidden -Wait -EA SilentlyContinue
+        if ($LASTEXITCODE -eq 0) { 
+            $success = $true 
+            Write-Suc "Instalado via Winget!"
+            return
+        }
     }
 
-    # Se ainda falhar
+    # Download direto via BitsTransfer como último recurso
+    if (-not $success -and $prog.DirectUrl) {
+        Write-Log "Tentando download direto: $($prog.DisplayName)"
+        $tempInstaller = "$env:TEMP\$($prog.DisplayName)_setup.exe"
+        try {
+            Start-BitsTransfer -Source $prog.DirectUrl -Destination $tempInstaller -Priority High -TransferType Download
+            Start-Process -FilePath $tempInstaller -ArgumentList "/S /NCRC" -Wait -EA SilentlyContinue
+            $success = $true
+            Write-Suc "Instalado via Download Direto!"
+            Remove-Item $tempInstaller -Force -EA SilentlyContinue
+        } catch {
+            Write-Err "Download direto falhou: $($prog.DisplayName)"
+        }
+    }
+
     if (-not $success) {
-        Write-Err "Falha ao instalar $($prog.DisplayName) ou nao encontrou pacote."
+        Write-Err "Nao foi possivel instalar $($prog.DisplayName)"
     }
 }
 
@@ -100,10 +168,10 @@ $ProgramCatalog = @(
     [pscustomobject]@{ DisplayName='CrystalDiskMark'; WingetId='CrystalDewWorld.CrystalDiskMark'; ChocoId='crystaldiskmark'; Match=@('CrystalDiskMark') }
     [pscustomobject]@{ DisplayName='Discord'; WingetId='Discord.Discord'; ChocoId='discord'; Match=@('Discord') }
     [pscustomobject]@{ DisplayName='Eclipse Temurin JDK17'; WingetId='EclipseFoundation.Temurin.17.JDK'; ChocoId='temurin17jre'; Match=@('Eclipse Temurin') }
-    [pscustomobject]@{ DisplayName='Epic Games'; WingetId='EpicGames.EpicGamesLauncher'; ChocoId='epicgameslauncher'; Match=@('Epic Games') }
-    [pscustomobject]@{ DisplayName='GameSave Manager'; WingetId='InsaneMatters.GameSaveManager'; ChocoId='gamesavemanager'; Match=@('GameSave Manager') }
+    [pscustomobject]@{ DisplayName='Epic Games'; WingetId='EpicGames.EpicGamesLauncher'; ChocoId='epicgameslauncher'; DirectUrl='https://launcher-public-service-prod06.ol.epicgames.com/launcher/api/installer/Installers.win32.epicgames-launcher-installer.exe'; Match=@('Epic Games') }
+    [pscustomobject]@{ DisplayName='GameSave Manager'; WingetId='InsaneMatters.GameSaveManager'; ChocoId='gamesavemanager'; DirectUrl='https://www.gamesavemanager.com/Download'; Match=@('GameSave Manager') }
     [pscustomobject]@{ DisplayName='Git'; WingetId='Git.Git'; ChocoId='git'; Match=@('Git') }
-    [pscustomobject]@{ DisplayName='Hydra Launcher'; WingetId='Polaar.Hydra'; ChocoId=''; Match=@('Hydra') }
+    [pscustomobject]@{ DisplayName='Hydra Launcher'; WingetId='Polaar.Hydra'; ChocoId='hydra'; DirectUrl='https://github.com/HydraLauncher/Hydra/releases/latest/download/Hydra-Setup.exe'; Match=@('Hydra') }
     [pscustomobject]@{ DisplayName='ImageGlass'; WingetId='ImageGlass.ImageGlass'; ChocoId='imageglass'; Match=@('ImageGlass') }
     [pscustomobject]@{ DisplayName='League of Legends'; WingetId='RiotGames.LeagueOfLegends.EUW'; ChocoId=''; Match=@('League of Legends') }
     [pscustomobject]@{ DisplayName='Firefox'; WingetId='Mozilla.Firefox'; ChocoId='firefox'; Match=@('Firefox') }
@@ -172,18 +240,31 @@ function Menu-Installs {
     $sel = Parse-Selection -inStr $inp -max $ProgramCatalog.Count
     
     if ($sel.Count -gt 0) {
-        Write-Host "`nIniciando instalacao de $($sel.Count) itens..." -ForegroundColor Cyan
+        Write-Host "`nIniciando instalacao PARALELA de $($sel.Count) itens..." -ForegroundColor Cyan
 
-        # Priorizar a instalação da Steam
-        $steamSelection = $sel | Where-Object { $ProgramCatalog[$_-1].DisplayName -match 'Steam' }
-        if ($steamSelection) {
-            Write-Log "Priorizando a instalacao da Steam antes dos outros scripts..."
-            foreach ($s in $steamSelection) { Install-Target -prog $ProgramCatalog[$s-1] }
-            $sel = $sel | Where-Object { $_ -notin $steamSelection }
+        # Instalar todos em paralelo usando Jobs
+        $jobs = @()
+        foreach ($s in $sel) {
+            $prog = $ProgramCatalog[$s-1]
+            $job = Start-Job -ScriptBlock {
+                param($p, $scriptPath)
+                & $scriptPath -InstallSingle $p.DisplayName $p.WingetId $p.ChocoId $p.DirectUrl
+            } -ArgumentList $prog, $PSCommandPath
+            $jobs += $job
         }
 
-        # Instalar o restante
-        foreach ($s in $sel) { Install-Target -prog $ProgramCatalog[$s-1] }
+        # Aguardar todos os jobs terminarem
+        Write-Log "Aguardando instalacoes..."
+        $jobs | Wait-Job | Out-Null
+        
+        foreach ($job in $jobs) {
+            $result = Receive-Job -Job $job
+            if ($result -match "OK") { Write-Suc $result }
+            elseif ($result -match "ERRO") { Write-Err $result }
+        }
+        
+        Remove-Job -Job $jobs -Force -EA SilentlyContinue
+        Write-Suc "Todas as instalacoes concluidas!"
         Pause-Output
     }
 }
