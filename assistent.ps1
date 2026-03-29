@@ -13,9 +13,15 @@ function Test-Admin {
 
 if (-not (Test-Admin)) {
     Write-Host "Requires Administrator Privileges. Elevating..." -ForegroundColor Yellow
-    Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+    Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Unrestricted -File `"$PSCommandPath`"" -Verb RunAs
     exit
 }
+
+# Habilitar ExecutionPolicy Unrestricted para todos os escopos
+Set-ExecutionPolicy Unrestricted -Scope Process -Force -ErrorAction SilentlyContinue
+Set-ExecutionPolicy Unrestricted -Scope CurrentUser -Force -ErrorAction SilentlyContinue
+Set-ExecutionPolicy Unrestricted -Scope LocalMachine -Force -ErrorAction SilentlyContinue
+
 
 # 2. LOGGING E INTERFACE
 function Write-Log { param([string]$m) Write-Host " [i] $m" -ForegroundColor Cyan }
@@ -166,6 +172,16 @@ function Menu-Installs {
     
     if ($sel.Count -gt 0) {
         Write-Host "`nIniciando instalacao de $($sel.Count) itens..." -ForegroundColor Cyan
+
+        # Priorizar a instalação da Steam
+        $steamSelection = $sel | Where-Object { $ProgramCatalog[$_-1].DisplayName -match 'Steam' }
+        if ($steamSelection) {
+            Write-Log "Priorizando a instalacao da Steam antes dos outros scripts..."
+            foreach ($s in $steamSelection) { Install-Target -prog $ProgramCatalog[$s-1] }
+            $sel = $sel | Where-Object { $_ -notin $steamSelection }
+        }
+
+        # Instalar o restante
         foreach ($s in $sel) { Install-Target -prog $ProgramCatalog[$s-1] }
         Pause-Output
     }
@@ -241,7 +257,8 @@ function Menu-Packs {
     Write-Host " [1] Instalar Spicetify (Spotify Mod sem Ads)"
     Write-Host " [2] Instalar AME Wizard (ReviOS)"
     Write-Host " [3] Ativador WinAct"
-    Write-Host " [4] Voltar"
+    Write-Host " [4] Instalar Spotify (Instalador Oficial - Não MS Store)"
+    Write-Host " [5] Voltar"
     $ch = Read-Host "`nSelecione"
     switch($ch) {
         '1' {
@@ -258,6 +275,15 @@ function Menu-Packs {
         '3' {
             Write-Log "Rodando WinAct..."
             irm https://massgrave.dev/get | iex
+            Pause-Output
+        }
+        '4' {
+            Write-Log "Baixando o instalador oficial do Spotify..."
+            $spotifyExe = "$env:TEMP\SpotifySetup.exe"
+            Invoke-WebRequest -Uri "https://download.scdn.co/SpotifySetup.exe" -OutFile $spotifyExe -UseBasicParsing
+            Write-Log "Rodando o instalador..."
+            Start-Process -FilePath $spotifyExe -Wait
+            Write-Suc "Instalação do Spotify concluída."
             Pause-Output
         }
     }
