@@ -186,13 +186,50 @@ function Test-Scoop  { try { $null = Get-Command scoop  -EA Stop; return $true }
 
 function Bootstrap-Winget {
     if (Test-Winget) { Write-OK "WinGet available"; return $true }
+
     Write-Warn "Bootstrapping WinGet..."
+
+    # Method 1: MS Store via winget (works if winget already exists from a previous run)
     try {
         winget install --id Microsoft.DesktopAppInstaller -e --source msstore --accept-source-agreements --accept-package-agreements --silent 2>&1 | Out-Null
+        # Refresh PATH for current session
         $env:Path = [Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [Environment]::GetEnvironmentVariable("Path","User")
+        # Also reload from registry directly
+        $regPath = [Environment]::GetEnvironmentVariable("Path","Machine")
+        if ($regPath) { $env:Path = $regPath + ";" + $env:Path }
         if (Test-Winget) { Write-OK "WinGet installed"; return $true }
     } catch {}
-    Write-Err "WinGet bootstrap failed"
+
+    # Method 2: Direct .msixbundle download
+    try {
+        $msixFile = "$env:TEMP\WinGet.msixbundle"
+        Invoke-Download "https://aka.ms/getwinget" $msixFile 2 | Out-Null
+        Add-AppxPackage -Path $msixFile -EA SilentlyContinue
+        $env:Path = [Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [Environment]::GetEnvironmentVariable("Path","User")
+        $regPath = [Environment]::GetEnvironmentVariable("Path","Machine")
+        if ($regPath) { $env:Path = $regPath + ";" + $env:Path }
+        if (Test-Winget) { Write-OK "WinGet installed via direct download"; return $true }
+    } catch {}
+
+    # Method 3: Install App Installer from the Microsoft Store XML catalog
+    try {
+        $msixFile2 = "$env:TEMP\Microsoft.DesktopAppInstaller.msixbundle"
+        Invoke-Download "https://cdn.winget.microsoft.com/cache/main.msix" $msixFile2 2 | Out-Null
+        if (Test-Path $msixFile2 -and (Get-Item $msixFile2).Length -gt 10240) {
+            Add-AppxPackage -Path $msixFile2 -EA SilentlyContinue
+        }
+    } catch {}
+
+    # Method 4: Install via Chocolatey as last resort
+    if (Test-Choco) {
+        try {
+            choco install winget-cli-universal -y --force --ignore-checksums 2>&1 | Out-Null
+            $env:Path = [Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [Environment]::GetEnvironmentVariable("Path","User")
+            if (Test-Winget) { Write-OK "WinGet installed via Chocolatey"; return $true }
+        } catch {}
+    }
+
+    Write-Err "WinGet bootstrap failed - will use Chocolatey as fallback"
     return $false
 }
 
@@ -455,7 +492,25 @@ function Install-Sw {
             Wait-Job $job -Timeout $timeout | Out-Null
             $out = $job | Receive-Job
             Remove-Job $job -Force
-            if ($LASTEXITCODE -eq 0 -or $out -match "Successfully installed") { $ok = $true; $usedMethod = "winget" }
+
+            $isSuccess = $false
+            if ($out) {
+                $outStr = ($out -join " `n").ToLower()
+                if ($outStr -match "successfully installed|no applicable update found|already installed|found in one of the sources") {
+                    $isSuccess = $true
+                }
+                if ($outStr -match "not recognized|command not found|term.*not recognized") {
+                    $isSuccess = $false
+                }
+            }
+            if ($isSuccess) {
+                Start-Sleep -Seconds 3
+                $script:InstalledCache = $null
+                if (Is-Installed -Sw $Sw) {
+                    $ok = $true
+                    $usedMethod = "winget"
+                }
+            }
         } catch { Log "WinGet failed $name : $_" "E" }
     }
 
@@ -469,7 +524,22 @@ function Install-Sw {
             Wait-Job $job -Timeout $timeout | Out-Null
             $out = $job | Receive-Job
             Remove-Job $job -Force
-            if ($LASTEXITCODE -eq 0) { $ok = $true; $usedMethod = "choco" }
+
+            $isSuccess = $false
+            if ($out) {
+                $outStr = ($out -join "`n").ToLower()
+                if ($outStr -match "installed / installed: 1/1|1 upgraded|success" -and $outStr -notmatch "not recognized") {
+                    $isSuccess = $true
+                }
+            }
+            if ($isSuccess) {
+                Start-Sleep -Seconds 3
+                $script:InstalledCache = $null
+                if (Is-Installed -Sw $Sw) {
+                    $ok = $true
+                    $usedMethod = "choco"
+                }
+            }
         } catch { Log "Choco failed $name : $_" "E" }
     }
 
