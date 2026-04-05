@@ -339,45 +339,45 @@ function Resolve-GithubLatest {
 # ============================================================
 function Get-SoftwareCatalog {
     return @(
-        @{ name='Firefox';         choco='firefox';             match=@('Firefox') }
-        @{ name='Discord';         choco='discord';             match=@('Discord') }
-        @{ name='Telegram';        choco='telegram';            match=@('Telegram Desktop') }
-        @{ name='Spotify';         choco='spotify';             match=@('Spotify') }
-        @{ name='VLC';             choco='vlc';                 match=@('VLC') }
-        @{ name='MPV';             choco='mpv';                 match=@('mpv') }
-        @{ name='Audacity';        choco='audacity';            match=@('Audacity') }
-        @{ name='OBS Studio';      choco='obs-studio';          match=@('OBS Studio') }
-        @{ name='Notepad++';       choco='notepadplusplus';     match=@('Notepad++') }
-        @{ name='ShareX';          choco='sharex';              match=@('ShareX') }
-        @{ name='Obsidian';        choco='obsidian';            match=@('Obsidian') }
-        @{ name='PowerToys';       choco='powertoys';           match=@('PowerToys') }
-        @{ name='7-Zip';           choco='7zip';                match=@('7-Zip') }
-        @{ name='WinRAR';          choco='winrar';              match=@('WinRAR') }
-        @{ name='ImageGlass';      choco='imageglass';          match=@('ImageGlass') }
-        @{ name='Steam';           choco='steam-client';        match=@('Steam') }
-        @{ name='Epic Games';      choco='epicgameslauncher';   match=@('Epic Games') }
-        @{ name='Roblox';          choco='roblox';              match=@('Roblox') }
-        @{ name='GOG Galaxy';      choco='goggalaxy';           match=@('GOG Galaxy') }
-        @{ name='PrismLauncher';   choco='prismlauncher';       match=@('PrismLauncher') }
-        @{ name='LoL';             choco='leagueoflegends';     match=@('League of Legends') }
-        @{ name='GameSave Manager'; choco='gamesavemanager';    match=@('GameSave Manager') }
-        @{ name='Git';             choco='git';                 match=@('Git') }
-        @{ name='Node.js LTS';     choco='nodejs-lts';          match=@('Node.js LTS') }
-        @{ name='VSCode';          choco='vscode';              match=@('Visual Studio Code') }
-        @{ name='RustDesk';        choco='rustdesk';            match=@('RustDesk') }
-        @{ name='CPU-Z';           choco='cpu-z';               match=@('CPU-Z') }
-        @{ name='CrystalDiskInfo'; choco='crystaldiskinfo';     match=@('CrystalDiskInfo') }
-        @{ name='CrystalDiskMark'; choco='crystaldiskmark';     match=@('CrystalDiskMark') }
-        @{ name='BCUninstaller';   choco='bulk-crap-uninstaller'; match=@('Bulk Crap Uninstaller') }
+        @{ name='Firefox';          choco='firefox';              match=@('Firefox') }
+        @{ name='Discord';          choco='discord.install';      match=@('Discord') }
+        @{ name='Telegram';         choco='telegram';             match=@('Telegram Desktop') }
+        @{ name='Spotify';          choco='spotify';              match=@('Spotify') }
+        @{ name='VLC';              choco='vlc';                  match=@('VLC') }
+        @{ name='MPV';              choco='mpv.install';          match=@('mpv') }
+        @{ name='Audacity';         choco='audacity.install';     match=@('Audacity') }
+        @{ name='OBS Studio';       choco='obs-studio';           match=@('OBS Studio') }
+        @{ name='Notepad++';        choco='notepadplusplus.install'; match=@('Notepad++') }
+        @{ name='ShareX';           choco='sharex';               match=@('ShareX') }
+        @{ name='Obsidian';         choco='obsidian';             match=@('Obsidian') }
+        @{ name='PowerToys';        choco='powertoys';            match=@('PowerToys') }
+        @{ name='7-Zip';            choco='7zip.install';         match=@('7-Zip') }
+        @{ name='WinRAR';           choco='winrar.install';       match=@('WinRAR') }
+        @{ name='ImageGlass';       choco='imageglass-next';      match=@('ImageGlass') }
+        @{ name='Steam';            choco='steam-client';         match=@('Steam') }
+        @{ name='Epic Games';       choco='epicgameslauncher';    match=@('Epic Games') }
+        @{ name='Roblox';           choco='roblox';               match=@('Roblox') }
+        @{ name='GOG Galaxy';       choco='goggalaxy';            match=@('GOG Galaxy') }
+        @{ name='PrismLauncher';    choco='prismlauncher';        match=@('PrismLauncher') }
+        @{ name='LoL';              choco='leagueoflegends';      match=@('League of Legends') }
+        @{ name='GameSave Manager'; choco='gamesavemanager';      match=@('GameSave Manager') }
+        @{ name='Git';              choco='git.install';          match=@('Git') }
+        @{ name='Node.js LTS';      choco='nodejs-lts';           match=@('Node.js LTS') }
+        @{ name='VSCode';           choco='vscode';               match=@('Visual Studio Code') }
+        @{ name='RustDesk';         choco='rustdesk.install';     match=@('RustDesk') }
+        @{ name='CPU-Z';            choco='cpu-z.install';        match=@('CPU-Z') }
+        @{ name='CrystalDiskInfo';  choco='crystaldiskinfo.install'; match=@('CrystalDiskInfo') }
+        @{ name='CrystalDiskMark';  choco='crystaldiskmark';      match=@('CrystalDiskMark') }
+        @{ name='BCUninstaller';    choco='bulk-crap-uninstaller'; match=@('Bulk Crap Uninstaller') }
     )
 }
 
 function Get-DepsCatalog {
     return @(
-        @{ name='VCRedist AIO';    choco='vcredist140';               match=@('Visual C++','vcredist') }
-        @{ name='DirectX Runtime'; choco='directx';                   match=@('DirectX') }
-        @{ name='.NET 8 Desktop';  choco='dotnet-8.0-desktopruntime'; match=@('.NET Desktop Runtime 8') }
-        @{ name='OpenAL';          choco='openal';                    match=@('OpenAL') }
+        @{ name='VCRedist AIO';     choco='vcredist-all';                match=@('Visual C++','vcredist') }
+        @{ name='DirectX Runtime';  choco='directx';                     match=@('DirectX') }
+        @{ name='.NET 8 Desktop';   choco='dotnet-8.0-desktop-runtime';  match=@('.NET Desktop Runtime 8') }
+        @{ name='OpenAL';           choco='openal';                      match=@('OpenAL') }
     )
 }
 
@@ -520,17 +520,26 @@ function Install-Batch {
 
     $swatch = [System.Diagnostics.Stopwatch]::StartNew()
 
-    # Launch ALL installs simultaneously — no waiting between them
-    foreach ($sw in $toDo) {
-        Install-Sw -Sw $sw
+    # Install in batches of 3 to avoid freezing
+    $concurrency = 3
+    $i = 0
+
+    while ($i -lt $installCount) {
+        $batch = @()
+        $j = 0
+        while ($j -lt $concurrency -and $i -lt $installCount) {
+            Install-Sw -Sw $toDo[$i]
+            $batch += $i
+            $i++
+            $j++
+        }
+
+        # Wait for this batch of 3 to finish before launching the next
+        Install-JobSummary
+
+        $doneCount = [Math]::Min($i, $installCount)
+        Write-Host " [$doneCount/$installCount] batch done" -ForegroundColor DarkGray
     }
-
-    Write-Host ""
-    Write-Host " Launching $installCount installs in parallel..." -ForegroundColor Cyan
-    Write-Host ""
-
-    # Wait for ALL jobs to finish at once
-    Install-JobSummary
 
     $swatch.Stop()
 
