@@ -287,67 +287,31 @@ function PreFlight {
 }
 
 # ============================================================
-# 5. DOWNLOAD ENGINE
+# 5. DOWNLOAD ENGINE (kept only for Premium menu)
 # ============================================================
 function Invoke-Download {
     param([string]$Url, [string]$OutFile, [int]$MaxRetries = 3)
-    $retries = [Math]::Max(1, $MaxRetries)
-    $baseDelay = [int](Get-Cfg "retry_delay_seconds" 3)
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-    $attempt = 1
-    while ($attempt -le $retries) {
-        if ($attempt -gt 1) {
-            $delay = [Math]::Pow(2, $attempt - 1) * $baseDelay
-            Write-Warn "  Retry $attempt/$retries (waiting ${delay}s)..."
-            Start-Sleep -Seconds ([int]$delay)
-        }
+    try {
+        $wc = New-Object System.Net.WebClient
+        $wc.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Devil9Assistant/$script:VERSION")
+        $wc.DownloadFile($Url, $OutFile)
+        $wc.Dispose()
+        if ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 10240) { return $true }
+    } catch { }
 
-        # Method 1: .NET WebClient (fastest, no BITS overhead)
-        try {
-            $wc = New-Object System.Net.WebClient
-            $wc.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Devil9Assistant/$script:VERSION")
-            $wc.DownloadFile($Url, $OutFile)
-            if ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 10240) {
-                $wc.Dispose()
-                Log "Download OK WebClient attempt $attempt" "DL"
-                return $true
-            }
-            $wc.Dispose()
-        } catch {
-            Log "WebClient attempt $attempt failed: $_" "DL-RETRY"
-        }
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $OutFile -Headers @{ 'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } -UseBasicParsing -TimeoutSec 120 -EA Stop
+        if ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 10240) { return $true }
+    } catch { }
 
-        # Method 2: IWR as fallback
-        try {
-            Invoke-WebRequest -Uri $Url -OutFile $OutFile -Headers @{ 'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } -UseBasicParsing -TimeoutSec 120 -EA Stop
-            if ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 10240) {
-                Log "Download OK IWR attempt $attempt" "DL"
-                return $true
-            }
-        } catch {
-            Log "IWR attempt $attempt failed: $_" "DL-RETRY"
-        }
-
-        # Method 3: BITS as last resort (slow but reliable for large files)
-        try {
-            Start-BitsTransfer -Source $Url -Destination $OutFile -Priority High -TransferType Download -EA Stop
-            if ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 10240) {
-                Log "Download OK BITS attempt $attempt" "DL"
-                return $true
-            }
-        } catch {
-            Log "BITS attempt $attempt failed: $_" "DL-RETRY"
-        }
-
-        $attempt++
-    }
-    Write-Err "  Download FAILED after $retries attempts"
-    Log "Download FAILED: $Url" "DL-FAIL"
+    Write-Err "  Download FAILED: $Url"
     return $false
 }
 
 # ============================================================
-# 6. GITHUB RESOLVER
+# 6. GITHUB RESOLVER (kept for premium tools)
 # ============================================================
 function Resolve-GithubLatest {
     param([string]$Repo, [string]$Pattern = "\.exe$|\.msi$")
@@ -375,45 +339,45 @@ function Resolve-GithubLatest {
 # ============================================================
 function Get-SoftwareCatalog {
     return @(
-        @{ name='Firefox';          winget='Mozilla.Firefox';             choco='firefox';             direct='';                                                    match=@('Firefox') }
-        @{ name='Discord';          winget='Discord.Discord';             choco='discord';             direct='';                                                    match=@('Discord') }
-        @{ name='Telegram';         winget='Telegram.TelegramDesktop';    choco='telegram';            direct='';                                                    match=@('Telegram Desktop') }
-        @{ name='Spotify';          winget='Spotify.Spotify';             choco='spotify';             direct='https://download.scdn.co/SpotifySetup.exe';          match=@('Spotify') }
-        @{ name='VLC';              winget='VideoLAN.VLC';                choco='vlc';                 direct='';                                                    match=@('VLC') }
-        @{ name='MPV';              winget='mpv.mpv';                     choco='mpv';                 direct='{GH:shinchiro/mpv-winbuild-cmake}';                  match=@('mpv') }
-        @{ name='Audacity';         winget='Audacity.Audacity';           choco='audacity';            direct='{GH:audacity/audacity}';                              match=@('Audacity') }
-        @{ name='OBS Studio';       winget='OBSProject.OBSStudio';        choco='obs-studio';          direct='{GH:obsproject/obs-studio}';                          match=@('OBS Studio') }
-        @{ name='Notepad++';        winget='Notepad++.Notepad++';         choco='notepadplusplus';     direct='';                                                    match=@('Notepad++') }
-        @{ name='ShareX';           winget='ShareX.ShareX';               choco='sharex';              direct='{GH:ShareX/ShareX}';                                  match=@('ShareX') }
-        @{ name='Obsidian';         winget='Obsidian.Obsidian';           choco='obsidian';            direct='';                                                    match=@('Obsidian') }
-        @{ name='PowerToys';        winget='Microsoft.PowerToys';         choco='powertoys';           direct='{GH:microsoft/PowerToys}';                            match=@('PowerToys') }
-        @{ name='7-Zip';            winget='7zip.7zip';                   choco='7zip';                direct='';                                                    match=@('7-Zip') }
-        @{ name='WinRAR';           winget='RARLab.WinRAR';               choco='winrar';              direct='';                                                    match=@('WinRAR') }
-        @{ name='ImageGlass';       winget='ImageGlass.ImageGlass';       choco='imageglass';          direct='{GH:d2phap/ImageGlass}';                              match=@('ImageGlass') }
-        @{ name='Steam';            winget='Valve.Steam';                 choco='steam-client';        direct='https://cdn.akamai.steamstatic.com/client/installer/SteamSetup.exe'; match=@('Steam') }
-        @{ name='Epic Games';       winget='EpicGames.EpicGamesLauncher'; choco='epicgameslauncher';   direct='https://launcher-distill-static.ol.epicgames.com/Installer/Windows/EpicInstaller.exe'; match=@('Epic Games') }
-        @{ name='Roblox';           winget='Roblox.Roblox';               choco='roblox';              direct='';                                                    match=@('Roblox') }
-        @{ name='GOG Galaxy';       winget='GOG.Galaxy';                  choco='goggalaxy';           direct='';                                                    match=@('GOG Galaxy') }
-        @{ name='PrismLauncher';    winget='PrismLauncher.PrismLauncher'; choco='prismlauncher';       direct='{GH:PrismLauncher/PrismLauncher}';                    match=@('PrismLauncher') }
-        @{ name='LoL';              winget='RiotGames.LeagueOfLegends';   choco='leagueoflegends';     direct='https://lol.secure.dyn.riotcdn.net/channels/public/installs/leagueoflegends.exe'; match=@('League of Legends') }
-        @{ name='GameSave Manager'; winget='InsaneMatters.GameSaveManager'; choco='gamesavemanager';   direct='';                                                    match=@('GameSave Manager') }
-        @{ name='Git';              winget='Git.Git';                     choco='git';                 direct='';                                                    match=@('Git') }
-        @{ name='Node.js LTS';      winget='OpenJS.NodeJS.LTS';           choco='nodejs-lts';          direct='';                                                    match=@('Node.js LTS') }
-        @{ name='VSCode';           winget='Microsoft.VisualStudioCode';  choco='vscode';              direct='';                                                    match=@('Visual Studio Code') }
-        @{ name='RustDesk';         winget='RustDesk.RustDesk';           choco='rustdesk';            direct='{GH:rustdesk/rustdesk}';                             match=@('RustDesk') }
-        @{ name='CPU-Z';            winget='CPUID.CPU-Z';                 choco='cpu-z';               direct='';                                                    match=@('CPU-Z') }
-        @{ name='CrystalDiskInfo';  winget='CrystalDewWorld.CrystalDiskInfo'; choco='crystaldiskinfo'; direct='';                                                    match=@('CrystalDiskInfo') }
-        @{ name='CrystalDiskMark';  winget='CrystalDewWorld.CrystalDiskMark'; choco='crystaldiskmark'; direct='';                                                    match=@('CrystalDiskMark') }
-        @{ name='BCUninstaller';    winget='Klocman.BulkCrapUninstaller'; choco='bulk-crap-uninstaller'; direct='{GH:Klocman/Bulk-Crap-Uninstaller}';              match=@('Bulk Crap Uninstaller') }
+        @{ name='Firefox';         choco='firefox';             match=@('Firefox') }
+        @{ name='Discord';         choco='discord';             match=@('Discord') }
+        @{ name='Telegram';        choco='telegram';            match=@('Telegram Desktop') }
+        @{ name='Spotify';         choco='spotify';             match=@('Spotify') }
+        @{ name='VLC';             choco='vlc';                 match=@('VLC') }
+        @{ name='MPV';             choco='mpv';                 match=@('mpv') }
+        @{ name='Audacity';        choco='audacity';            match=@('Audacity') }
+        @{ name='OBS Studio';      choco='obs-studio';          match=@('OBS Studio') }
+        @{ name='Notepad++';       choco='notepadplusplus';     match=@('Notepad++') }
+        @{ name='ShareX';          choco='sharex';              match=@('ShareX') }
+        @{ name='Obsidian';        choco='obsidian';            match=@('Obsidian') }
+        @{ name='PowerToys';       choco='powertoys';           match=@('PowerToys') }
+        @{ name='7-Zip';           choco='7zip';                match=@('7-Zip') }
+        @{ name='WinRAR';          choco='winrar';              match=@('WinRAR') }
+        @{ name='ImageGlass';      choco='imageglass';          match=@('ImageGlass') }
+        @{ name='Steam';           choco='steam-client';        match=@('Steam') }
+        @{ name='Epic Games';      choco='epicgameslauncher';   match=@('Epic Games') }
+        @{ name='Roblox';          choco='roblox';              match=@('Roblox') }
+        @{ name='GOG Galaxy';      choco='goggalaxy';           match=@('GOG Galaxy') }
+        @{ name='PrismLauncher';   choco='prismlauncher';       match=@('PrismLauncher') }
+        @{ name='LoL';             choco='leagueoflegends';     match=@('League of Legends') }
+        @{ name='GameSave Manager'; choco='gamesavemanager';    match=@('GameSave Manager') }
+        @{ name='Git';             choco='git';                 match=@('Git') }
+        @{ name='Node.js LTS';     choco='nodejs-lts';          match=@('Node.js LTS') }
+        @{ name='VSCode';          choco='vscode';              match=@('Visual Studio Code') }
+        @{ name='RustDesk';        choco='rustdesk';            match=@('RustDesk') }
+        @{ name='CPU-Z';           choco='cpu-z';               match=@('CPU-Z') }
+        @{ name='CrystalDiskInfo'; choco='crystaldiskinfo';     match=@('CrystalDiskInfo') }
+        @{ name='CrystalDiskMark'; choco='crystaldiskmark';     match=@('CrystalDiskMark') }
+        @{ name='BCUninstaller';   choco='bulk-crap-uninstaller'; match=@('Bulk Crap Uninstaller') }
     )
 }
 
 function Get-DepsCatalog {
     return @(
-        @{ name='VCRedist AIO';   winget='';                            choco='vcredist140';             direct='{GH:abbodi1406/vcredist}';              match=@('Visual C++','vcredist') }
-        @{ name='DirectX Runtime';winget='Microsoft.DirectX';           choco='directx';                 direct='https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe'; match=@('DirectX') }
-        @{ name='.NET 8 Desktop'; winget='Microsoft.DotNet.DesktopRuntime.8'; choco='dotnet-8.0-desktopruntime'; direct='';                  match=@('.NET Desktop Runtime 8') }
-        @{ name='OpenAL';         winget='';                             choco='openal';                 direct='https://www.openal.org/downloads/oalinst.zip'; match=@('OpenAL') }
+        @{ name='VCRedist AIO';    choco='vcredist140';               match=@('Visual C++','vcredist') }
+        @{ name='DirectX Runtime'; choco='directx';                   match=@('DirectX') }
+        @{ name='.NET 8 Desktop';  choco='dotnet-8.0-desktopruntime'; match=@('.NET Desktop Runtime 8') }
+        @{ name='OpenAL';          choco='openal';                    match=@('OpenAL') }
     )
 }
 
@@ -475,8 +439,10 @@ function Confirm-Install {
 # ============================================================
 $script:Results = [System.Collections.Generic.List[pscustomobject]]::new()
 
+$script:InstallJobs = @()
+
 function Install-Sw {
-    param($Sw, [string]$ForceMethod = "")
+    param($Sw)
     $name = $Sw.name
 
     if (Is-Installed -Sw $Sw) {
@@ -486,114 +452,40 @@ function Install-Sw {
     }
 
     Write-Info "Installing: $name"
-    $ok = $false
-    $usedMethod = ""
-    $timeout = [int](Get-Cfg "install_timeout_seconds" 300)
+    $job = Start-Job -Name $name -ScriptBlock {
+        param($chocoId)
+        choco install $chocoId -y 2>&1
+    } -ArgumentList $Sw.choco
+    $script:InstallJobs += @{ Job=$job; Sw=$Sw }
+}
 
-    # WinGet
-    if (-not $ok -and $Sw.winget -and $Sw.winget -ne "" -and (Get-Cfg "use_winget")) {
-        try {
-            $job = Start-Job -ScriptBlock {
-                param($id)
-                winget install --id $id -e --accept-source-agreements --accept-package-agreements --silent 2>&1
-            } -ArgumentList $Sw.winget
-            Wait-Job $job -Timeout $timeout | Out-Null
-            $out = $job | Receive-Job
-            Remove-Job $job -Force
+function Install-JobSummary {
+    if ($script:InstallJobs.Count -eq 0) { return }
 
-            $isSuccess = $false
-            if ($out) {
-                $outStr = ($out -join " `n").ToLower()
-                if ($outStr -match "successfully installed|no applicable update found|already installed|found in one of the sources") {
-                    $isSuccess = $true
-                }
-                if ($outStr -match "not recognized|command not found|term.*not recognized") {
-                    $isSuccess = $false
-                }
-            }
-            if ($isSuccess) {
-                Start-Sleep -Seconds 3
-                $script:InstalledCache = $null
-                if (Is-Installed -Sw $Sw) {
-                    $ok = $true
-                    $usedMethod = "winget"
-                }
-            }
-        } catch { Log "WinGet failed $name : $_" "E" }
-    }
+    Wait-Job ($script:InstallJobs | ForEach-Object { $_.Job }) | Out-Null
 
-    # Chocolatey
-    if (-not $ok -and $Sw.choco -and $Sw.choco -ne "" -and (Get-Cfg "use_choco")) {
-        try {
-            $job = Start-Job -ScriptBlock {
-                param($id)
-                choco install $id -y --force --ignore-checksums 2>&1
-            } -ArgumentList $Sw.choco
-            Wait-Job $job -Timeout $timeout | Out-Null
-            $out = $job | Receive-Job
-            Remove-Job $job -Force
+    foreach ($entry in $script:InstallJobs) {
+        $job = $entry.Job
+        $sw  = $entry.Sw
+        $out = Receive-Job $job -EA SilentlyContinue
+        Remove-Job $job -Force
 
-            $isSuccess = $false
-            if ($out) {
-                $outStr = ($out -join "`n").ToLower()
-                if ($outStr -match "installed / installed: 1/1|1 upgraded|success" -and $outStr -notmatch "not recognized") {
-                    $isSuccess = $true
-                }
-            }
-            if ($isSuccess) {
-                Start-Sleep -Seconds 3
-                $script:InstalledCache = $null
-                if (Is-Installed -Sw $Sw) {
-                    $ok = $true
-                    $usedMethod = "choco"
-                }
-            }
-        } catch { Log "Choco failed $name : $_" "E" }
-    }
-
-    # Direct download
-    if (-not $ok -and $Sw.direct -and $Sw.direct -ne "") {
-        $durl = $Sw.direct
-        if ($durl -match '\{GH:(.+?)\}') {
-            $repo = $matches[1]
-            $extp = '\.exe$|\.msi$'
-            if ($durl -match '\.zip$') { $extp = '\.zip$' }
-            $durl = Resolve-GithubLatest -Repo $repo -Pattern $extp
-        }
-
-        if ($durl) {
-            $ext = [System.IO.Path]::GetExtension($durl).ToLowerInvariant()
-            $safe = $name -replace '[^\w\-.]', '_'
-            $inst = "$env:TEMP\devil9_${safe}_setup${ext}"
-
-            if (Invoke-Download $durl $inst (Get-Cfg "max_retries" 3)) {
-                try {
-                    if ($ext -eq '.msi') {
-                        Start-Process msiexec.exe -ArgumentList "/i `"$inst`" /qn /norestart" -Wait -NoNewWindow
-                    } elseif ($ext -eq '.zip') {
-                        $extTo = "$env:TEMP\devil9_${safe}_ext"
-                        Expand-Archive $inst $extTo -Force -EA Stop
-                        $exes = Get-ChildItem $extTo -Filter "*.exe" -Recurse -EA SilentlyContinue | Sort-Object Length -Descending
-                        if ($exes) { Start-Process -FilePath $exes[0].FullName -ArgumentList "/S" -Wait -NoNewWindow }
-                        Remove-Item $inst -Force -EA SilentlyContinue
-                    } else {
-                        Start-Process -FilePath $inst -ArgumentList @("/S","/silent","/NCRC","/VERYSILENT") -Wait -NoNewWindow -EA Stop
-                    }
-                    if (Confirm-Install -Sw $Sw 10) { $ok = $true; $usedMethod = "direct" }
-                } catch { Log "Direct exec failed $name : $_" "E" }
-            }
+        if ($out) {
+            $outStr = ($out -join "`n").ToLower()
         } else {
-            Write-Warn "  Could not resolve URL for $name"
+            $outStr = ""
+        }
+
+        Refresh-InstalledCache
+        if (Is-Installed -Sw $sw) {
+            Write-OK "$($sw.name) installed"
+            $script:Results.Add([pscustomobject]@{ Name=$sw.name; Status='OK'; Method='choco' })
+        } else {
+            Write-Err "$($sw.name) FAILED"
+            $script:Results.Add([pscustomobject]@{ Name=$sw.name; Status='FAILED'; Method='choco' })
         }
     }
-
-    if ($ok -or (Is-Installed -Sw $Sw)) {
-        Write-OK "$name installed ($usedMethod)"
-        $script:Results.Add([pscustomobject]@{ Name=$name; Status='OK'; Method=$usedMethod })
-    } else {
-        Write-Err "$name FAILED"
-        $script:Results.Add([pscustomobject]@{ Name=$name; Status='FAILED'; Method=$usedMethod })
-    }
+    $script:InstallJobs = @()
 }
 
 # ============================================================
@@ -620,18 +512,26 @@ function Install-Batch {
     }
 
     Write-Host ""
-    Write-Host " $Label : $($catalog.Count) total | $okCount OK | $($toDo.Count) to install" -ForegroundColor Yellow
+    $installCount = $toDo.Count
+    Write-Host " $Label : $($catalog.Count) total | $okCount OK | $installCount to install" -ForegroundColor Yellow
     Write-Host ""
 
-    if ($toDo.Count -eq 0) { Write-OK "All $Label already installed!"; return }
+    if ($installCount -eq 0) { Write-OK "All $Label already installed!"; return }
 
     $swatch = [System.Diagnostics.Stopwatch]::StartNew()
-    $i = 1
+
+    # Launch ALL installs simultaneously — no waiting between them
     foreach ($sw in $toDo) {
-        Write-Host " [$i/$($toDo.Count)] " -ForegroundColor Gray -NoNewline
         Install-Sw -Sw $sw
-        $i++
     }
+
+    Write-Host ""
+    Write-Host " Launching $installCount installs in parallel..." -ForegroundColor Cyan
+    Write-Host ""
+
+    # Wait for ALL jobs to finish at once
+    Install-JobSummary
+
     $swatch.Stop()
 
     Write-Host ""
@@ -1001,10 +901,10 @@ function AutoInstall-All {
     PreFlight
 
     Write-Step "DEPENDENCIES"
-    foreach ($d in (Get-DepsCatalog)) { Install-Sw -Sw $d }
+    Install-Batch (Get-DepsCatalog) "DEPENDENCIES"
 
     Write-Step "SOFTWARE"
-    foreach ($s in (Get-SoftwareCatalog)) { Install-Sw -Sw $s }
+    Install-Batch (Get-SoftwareCatalog) "SOFTWARE"
 
     Write-Step "FONTS"
     foreach ($f in (Get-FontsCatalog)) {
