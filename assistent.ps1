@@ -292,7 +292,7 @@ function PreFlight {
 function Invoke-Download {
     param([string]$Url, [string]$OutFile, [int]$MaxRetries = 3)
     $retries = [Math]::Max(1, $MaxRetries)
-    $baseDelay = [int](Get-Cfg "retry_delay_seconds" 5)
+    $baseDelay = [int](Get-Cfg "retry_delay_seconds" 3)
 
     $attempt = 1
     while ($attempt -le $retries) {
@@ -302,31 +302,42 @@ function Invoke-Download {
             Start-Sleep -Seconds ([int]$delay)
         }
 
-        # Method 1: BITS
+        # Method 1: .NET WebClient (fastest, no BITS overhead)
+        try {
+            $wc = New-Object System.Net.WebClient
+            $wc.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Devil9Assistant/$script:VERSION")
+            $wc.DownloadFile($Url, $OutFile)
+            if ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 10240) {
+                $wc.Dispose()
+                Log "Download OK WebClient attempt $attempt" "DL"
+                return $true
+            }
+            $wc.Dispose()
+        } catch {
+            Log "WebClient attempt $attempt failed: $_" "DL-RETRY"
+        }
+
+        # Method 2: IWR as fallback
+        try {
+            Invoke-WebRequest -Uri $Url -OutFile $OutFile -Headers @{ 'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } -UseBasicParsing -TimeoutSec 120 -EA Stop
+            if ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 10240) {
+                Log "Download OK IWR attempt $attempt" "DL"
+                return $true
+            }
+        } catch {
+            Log "IWR attempt $attempt failed: $_" "DL-RETRY"
+        }
+
+        # Method 3: BITS as last resort (slow but reliable for large files)
         try {
             Start-BitsTransfer -Source $Url -Destination $OutFile -Priority High -TransferType Download -EA Stop
             if ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 10240) {
-                Log "Download OK BITS attempt $attempt" "DL"; return $true
+                Log "Download OK BITS attempt $attempt" "DL"
+                return $true
             }
-        } catch {}
-
-        # Method 2: WebClient
-        try {
-            $wc = New-Object System.Net.WebClient
-            $wc.Headers.Add("User-Agent", "Mozilla/5.0")
-            $wc.DownloadFile($Url, $OutFile)
-            if ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 10240) {
-                Log "Download OK WebClient attempt $attempt" "DL"; return $true
-            }
-        } catch {}
-
-        # Method 3: IWR
-        try {
-            Invoke-WebRequest -Uri $Url -OutFile $OutFile -Headers @{ 'User-Agent' = 'Mozilla/5.0' } -UseBasicParsing -TimeoutSec 120 -EA Stop
-            if ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 10240) {
-                Log "Download OK IWR attempt $attempt" "DL"; return $true
-            }
-        } catch {}
+        } catch {
+            Log "BITS attempt $attempt failed: $_" "DL-RETRY"
+        }
 
         $attempt++
     }
@@ -365,7 +376,6 @@ function Resolve-GithubLatest {
 function Get-SoftwareCatalog {
     return @(
         @{ name='Firefox';          winget='Mozilla.Firefox';             choco='firefox';             direct='';                                                    match=@('Firefox') }
-        @{ name='Google Chrome';    winget='Google.Chrome';               choco='googlechrome';        direct='';                                                    match=@('Google Chrome') }
         @{ name='Discord';          winget='Discord.Discord';             choco='discord';             direct='';                                                    match=@('Discord') }
         @{ name='Telegram';         winget='Telegram.TelegramDesktop';    choco='telegram';            direct='';                                                    match=@('Telegram Desktop') }
         @{ name='Spotify';          winget='Spotify.Spotify';             choco='spotify';             direct='https://download.scdn.co/SpotifySetup.exe';          match=@('Spotify') }
@@ -400,12 +410,10 @@ function Get-SoftwareCatalog {
 
 function Get-DepsCatalog {
     return @(
-        @{ name='VCRedist AIO';    winget='';                            choco='vcredist140';           direct='{GH:abbodi1406/vcredist}';              match=@('Visual C++','vcredist') }
-        @{ name='DirectX Runtime'; winget='Microsoft.DirectX';           choco='directx';               direct='https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe'; match=@('DirectX') }
-        @{ name='.NET 8 Desktop';  winget='Microsoft.DotNet.DesktopRuntime.8'; choco='dotnet-8.0-desktopruntime'; direct='';                    match=@('.NET Desktop Runtime 8') }
-        @{ name='XNA 4.0';         winget='Microsoft.XnaFrameworkRedistributable40'; choco='xna4';      direct='https://download.microsoft.com/download/5/6/3/5638ba26-1741-491b-8c6e-2fd5c0e2251a/xnafx40_redist.msi'; match=@('XNA') }
-        @{ name='OpenAL';          winget='';                             choco='openal';               direct='https://www.openal.org/downloads/oalinst.zip'; match=@('OpenAL') }
-        @{ name='NVIDIA PhysX';    winget='';                             choco='physx';                direct='https://us.download.nvidia.com/GFE/GFEClient/3D/PhysX-9.21.0713-Setup.exe'; match=@('PhysX') }
+        @{ name='VCRedist AIO';   winget='';                            choco='vcredist140';             direct='{GH:abbodi1406/vcredist}';              match=@('Visual C++','vcredist') }
+        @{ name='DirectX Runtime';winget='Microsoft.DirectX';           choco='directx';                 direct='https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe'; match=@('DirectX') }
+        @{ name='.NET 8 Desktop'; winget='Microsoft.DotNet.DesktopRuntime.8'; choco='dotnet-8.0-desktopruntime'; direct='';                  match=@('.NET Desktop Runtime 8') }
+        @{ name='OpenAL';         winget='';                             choco='openal';                 direct='https://www.openal.org/downloads/oalinst.zip'; match=@('OpenAL') }
     )
 }
 
